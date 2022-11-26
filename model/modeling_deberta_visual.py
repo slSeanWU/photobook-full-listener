@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from transformers.models.deberta.modeling_deberta import *
 
@@ -24,6 +25,8 @@ class DebertaWithVisualEmbeddings(nn.Module):
         if self.embedding_size != config.hidden_size:
             self.embed_proj = nn.Linear(self.embedding_size, config.hidden_size, bias=False)
         self.LayerNorm = DebertaLayerNorm(config.hidden_size, config.layer_norm_eps)
+        self.visual_LayerNorm = DebertaLayerNorm(config.hidden_size, config.layer_norm_eps)
+        self.vlscore_LayerNorm = DebertaLayerNorm(config.hidden_size, config.layer_norm_eps)
         self.dropout = StableDropout(config.hidden_dropout_prob)
         self.config = config
 
@@ -99,7 +102,7 @@ class DebertaWithVisualEmbeddings(nn.Module):
 
            -- visual_inputs: (batch, n_ctx_img, visual_hidden_size, H, W)
            -- img_pred_ids: (batch, n_ctx_img), e.g. (batch=2), [[0, 1, 0, 0, 2, 3], [1, 0, 2, 0, 0, 3]]
-           -- vlscores: (batch, n_ctx_img)
+           -- vlscores: (batch, seqlen, n_ctx_img)
         """
 
         if input_ids is not None:
@@ -172,6 +175,7 @@ class DebertaWithVisualEmbeddings(nn.Module):
             img_pred_ids_emb = self.img_pred_id_embeddings(img_pred_ids)
             visual_embeddings += img_pred_ids_emb
 
+        visual_embeddings = self.visual_LayerNorm(visual_embeddings)
         visual_embeddings = self.dropout(visual_embeddings)
         pooled_visual_embeddings = visual_embeddings.mean(dim=(2, 3))
 
@@ -185,6 +189,7 @@ class DebertaWithVisualEmbeddings(nn.Module):
 
         assert vlscore_embeddings.size() == embeddings.size()
 
+        vlscore_embeddings = self.vlscore_LayerNorm(vlscore_embeddings)
         vlscore_embeddings = self.dropout(vlscore_embeddings)
 
         return {
