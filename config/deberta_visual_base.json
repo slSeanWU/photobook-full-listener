@@ -20,8 +20,11 @@
   "n_img_subsamp": 1,
   "n_ctx_img": 6,
   "n_pred_img": 3,
-  "n_visual_layers": 2,
+  "num_visual_layers": 2,
+	"tie_visual_layers": true,
+	"use_pooled_vis_feat": true,
+	"use_patch_vis_feat": true,
   "visual_hidden_size": 768,
   "visual_insert_layers": [9, 9],
-  "vlscore_insert_layers": [10, 11]
+  "vlscore_insert_layers": [9, 10]
 }

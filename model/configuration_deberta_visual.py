@@ -26,10 +26,13 @@ class DebertaWithVisualConfig(PretrainedConfig):
         n_img_subsamp=1,
         n_ctx_img=6,
         n_pred_img=3,
-        n_visual_layers=2,
+        num_visual_layers=2,
         visual_hidden_size=768,
         visual_insert_layers=[9, 9],
-        vlscore_insert_layers=[10, 11],
+        vlscore_insert_layers=[9, 10],
+        tie_visual_layers=True,
+        use_pooled_vis_feat=True,
+        use_patch_vis_feat=True,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -66,7 +69,11 @@ class DebertaWithVisualConfig(PretrainedConfig):
         self.n_img_subsamp = n_img_subsamp
         self.n_ctx_img = n_ctx_img
         self.n_pred_img = n_pred_img
-        self.n_visual_layers = n_visual_layers
+        self.num_visual_layers = num_visual_layers
         self.visual_hidden_size = visual_hidden_size
         self.visual_insert_layers = visual_insert_layers
         self.vlscore_insert_layers = vlscore_insert_layers
+
+        self.tie_visual_layers = tie_visual_layers
+        self.use_pooled_vis_feat = use_pooled_vis_feat
+        self.use_patch_vis_feat = use_patch_vis_feat

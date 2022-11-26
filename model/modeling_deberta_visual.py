@@ -1,8 +1,74 @@
 import torch
 import torch.nn as nn
 from transformers.models.deberta.modeling_deberta import *
+from transformers.models.bart.modeling_bart import BartAttention
 
 from configuration_deberta_visual import DebertaWithVisualConfig
+
+
+class VisualCrossAttentionLayer(nn.Module):
+    def __init__(self, config: DebertaConfig):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+
+        self.cross_attn = BartAttention(
+            embed_dim=self.hidden_size,
+            num_heads=config.num_attention_heads,
+            dropout=config.attention_probs_dropout_prob,
+            is_decoder=True,
+        )
+
+        self.cross_attn_LayerNorm = DebertaLayerNorm(self.hidden_size)
+        self.fc1 = nn.Linear(self.hidden_size, config.intermediate_size)
+        self.act_fn = ACT2FN[config.hidden_act]
+        self.fc2 = nn.Linear(config.intermediate_size, self.hidden_size)
+        self.final_LayerNorm = DebertaLayerNorm(self.hidden_size)
+
+        self.dropout = StableDropout(config.hidden_dropout_prob)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        visual_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = False,
+    ):
+        """Shapes of required inputs
+
+            hidden_states: (batch, seqlen, hidden_size)
+            visual_states: (batch, n_ctx_img_patches, hidden_size)
+        """
+        # cross attention
+        residual = hidden_states
+
+        visual_states = self.dropout(visual_states)
+
+        # print (f"[in VisualCrossAttentionLayer.forward()] visual_states: {visual_states.size()}")
+        
+        hidden_states, attn_weights, _ = self.cross_attn(
+            hidden_states=hidden_states,
+            key_value_states=visual_states,
+            attention_mask=attention_mask,
+            layer_head_mask=layer_head_mask,
+            output_attentions=output_attentions,
+        )
+
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.cross_attn_LayerNorm(hidden_states + residual)
+
+        # position-wise feedforward
+        residual = hidden_states
+        hidden_states = self.act_fn(self.fc1(hidden_states))
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.fc2(hidden_states)
+        hidden_states = self.final_LayerNorm(hidden_size + residual)
+
+        if output_attentions:
+            return (hidden_states, attn_weights)
+        else:
+            return hidden_states
+
 
 class DebertaWithVisualEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings."""
@@ -26,6 +92,7 @@ class DebertaWithVisualEmbeddings(nn.Module):
             self.embed_proj = nn.Linear(self.embedding_size, config.hidden_size, bias=False)
         self.LayerNorm = DebertaLayerNorm(config.hidden_size, config.layer_norm_eps)
         self.visual_LayerNorm = DebertaLayerNorm(config.hidden_size, config.layer_norm_eps)
+        self.pooled_visual_LayerNorm = DebertaLayerNorm(config.hidden_size, config.layer_norm_eps)
         self.vlscore_LayerNorm = DebertaLayerNorm(config.hidden_size, config.layer_norm_eps)
         self.dropout = StableDropout(config.hidden_dropout_prob)
         self.config = config
@@ -65,12 +132,8 @@ class DebertaWithVisualEmbeddings(nn.Module):
                                               .expand((1, -1, img_patches_per_side, img_patches_per_side))
             )
 
-        if config.visual_hidden_size != config.hidden_size:
-            self.visual_embed_proj = nn.Linear(config.visual_hidden_size, config.hidden_size, bias=False)
-        else:
-            self.visual_embed_proj = None
-
-        self.vlscore_proj = nn.Linear(config.n_ctx_img, config.hidden_size, bias=False)
+        self.visual_embed_proj = nn.Linear(config.visual_hidden_size, config.hidden_size)
+        self.vlscore_proj = nn.Linear(config.n_ctx_img, config.hidden_size)
 
         n_img_subsamp = getattr(config, "n_img_subsamp", 0)
         if n_img_subsamp > 0:
@@ -152,8 +215,7 @@ class DebertaWithVisualEmbeddings(nn.Module):
 
         embeddings = self.dropout(embeddings)
 
-        if self.visual_embed_proj is not None:
-            visual_inputs = self.visual_embed_proj(visual_inputs)
+        
         if self.visual_subsamp_convs is not None:
             visual_inputs = visual_inputs.view(-1, *visual_inputs.size()[2:])
             visual_inputs = self.visual_subsamp_convs(visual_inputs)
@@ -163,6 +225,7 @@ class DebertaWithVisualEmbeddings(nn.Module):
 
         # put hidden size to last dimension
         visual_inputs = visual_inputs.permute(0, 1, 3, 4, 2)
+        visual_inputs = self.visual_embed_proj(visual_inputs)
 
         visual_embeddings = visual_inputs + \
                             self.img_patch_position_embeddings["H_emb"](self.img_H_pos_ids) + \
@@ -175,9 +238,10 @@ class DebertaWithVisualEmbeddings(nn.Module):
             img_pred_ids_emb = self.img_pred_id_embeddings(img_pred_ids)
             visual_embeddings += img_pred_ids_emb
 
-        visual_embeddings = self.visual_LayerNorm(visual_embeddings)
-        visual_embeddings = self.dropout(visual_embeddings)
         pooled_visual_embeddings = visual_embeddings.mean(dim=(2, 3))
+
+        visual_embeddings = self.visual_LayerNorm(visual_embeddings)
+        pooled_visual_embeddings = self.pooled_visual_LayerNorm(pooled_visual_embeddings)
 
         # (batch, n_ctx_img, H, W, hidden_size) --> (batch, n_ctx_img * H * W, hidden_size)
         visual_embeddings = visual_embeddings.view(batchsize, -1, self.config.hidden_size)
@@ -190,7 +254,6 @@ class DebertaWithVisualEmbeddings(nn.Module):
         assert vlscore_embeddings.size() == embeddings.size()
 
         vlscore_embeddings = self.vlscore_LayerNorm(vlscore_embeddings)
-        vlscore_embeddings = self.dropout(vlscore_embeddings)
 
         return {
             "text": embeddings,
@@ -199,12 +262,214 @@ class DebertaWithVisualEmbeddings(nn.Module):
             "vlscore": vlscore_embeddings,
         }
 
+class DebertaWithVisualEncoder(nn.Module):
+    """Modified BertEncoder with relative position bias support"""
+
+    def __init__(self, config):
+        super().__init__()
+        # NOTE (Shih-Lun): settings for visual features
+        assert config.num_visual_layers == len(config.visual_insert_layers)
+
+        self.use_pooled_vis_feat = config.use_pooled_vis_feat
+        self.use_patch_vis_feat = config.use_patch_vis_feat
+        self.tie_visual_layers = config.tie_visual_layers
+        self.visual_insert_layers = config.visual_insert_layers
+        self.vlscore_insert_layers = set(config.vlscore_insert_layers)
+        self.vlscore_dropout = StableDropout(config.hidden_dropout_prob)
+        
+        # NOTE (Shih-Lun): construct visual network parts
+        if not self.tie_visual_layers:
+            self.vis_layer = nn.ModuleList([
+                VisualCrossAttentionLayer(config) for _ in range(config.num_visual_layers)
+            ])
+        else:
+            _vis_layer = VisualCrossAttentionLayer(config)
+            self.vis_layer = nn.ModuleList([_vis_layer] * config.num_visual_layers)
+
+        self.layer = nn.ModuleList([DebertaLayer(config) for _ in range(config.num_hidden_layers)])
+        self.relative_attention = getattr(config, "relative_attention", False)
+        if self.relative_attention:
+            self.max_relative_positions = getattr(config, "max_relative_positions", -1)
+            if self.max_relative_positions < 1:
+                self.max_relative_positions = config.max_position_embeddings
+            self.rel_embeddings = nn.Embedding(self.max_relative_positions * 2, config.hidden_size)
+        self.gradient_checkpointing = False
+
+    def get_rel_embedding(self):
+        rel_embeddings = self.rel_embeddings.weight if self.relative_attention else None
+        return rel_embeddings
+
+    def get_attention_mask(self, attention_mask):
+        if attention_mask.dim() <= 2:
+            extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+            attention_mask = extended_attention_mask * extended_attention_mask.squeeze(-2).unsqueeze(-1)
+            attention_mask = attention_mask.byte()
+        elif attention_mask.dim() == 3:
+            attention_mask = attention_mask.unsqueeze(1)
+
+        return attention_mask
+
+    def get_rel_pos(self, hidden_states, query_states=None, relative_pos=None):
+        if self.relative_attention and relative_pos is None:
+            q = query_states.size(-2) if query_states is not None else hidden_states.size(-2)
+            relative_pos = build_relative_position(q, hidden_states.size(-2), hidden_states.device)
+        return relative_pos
+
+    def forward(
+        self,
+        hidden_states,
+        visual_states,
+        pooled_visual_states,
+        vlscore_states,
+        attention_mask,
+        cross_attention_mask=None,
+        output_hidden_states=True,
+        output_attentions=False,
+        query_states=None,
+        relative_pos=None,
+        return_dict=True,
+    ):
+        attention_mask = self.get_attention_mask(attention_mask)
+        relative_pos = self.get_rel_pos(hidden_states, query_states, relative_pos)
+
+        all_hidden_states = () if output_hidden_states else None
+        all_attentions = () if output_attentions else None
+
+        if isinstance(hidden_states, Sequence):
+            next_kv = hidden_states[0]
+        else:
+            next_kv = hidden_states
+
+        rel_embeddings = self.get_rel_embedding()
+
+        cur_vis_layer_idx = 0
+        if self.use_pooled_vis_feat and self.use_patch_vis_feat:
+            visual_states = torch.cat([pooled_visual_states, visual_states], dim=1)
+        elif self.use_pooled_vis_feat and not self.use_patch_vis_feat:
+            visual_states = pooled_visual_states
+        elif not self.use_pooled_vis_feat and self.use_patch_vis_feat:
+            visual_states = visual_states
+        else:
+            raise ValueError("at least one of use_pooled_vis_feat or use_patch_vis_feat should be true")
+
+        # NOTE(Shih-Lun): fuse vlscore (e.g., clipscore) at the beginning
+        if -1 in self.vlscore_insert_layers:
+            next_kv += self.vlscore_dropout(vlscore_states)
+
+        # NOTE(Shih-Lun): visual cross attention 
+        # (visual_insert_layers[idx] < 0) -- fuse before all Deberta layers
+        while cur_vis_layer_idx < len(self.vis_layer) and \
+              self.visual_insert_layers[ cur_vis_layer_idx ] < 0:
+            # print ("visual added after before zeroeth layer")
+
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            hidden_states = self.vis_layer[ cur_vis_layer_idx ](
+                hidden_states=hidden_states,
+                visual_states=visual_states,
+                attention_mask=cross_attention_mask,
+                output_attentions=output_attentions,
+            )
+            
+            if output_attentions:
+                hidden_states, att_m = hidden_states
+                all_attentions = all_attentions + (att_m,)
+
+            next_kv = hidden_states
+            cur_vis_layer_idx += 1
+
+
+        for i, layer_module in enumerate(self.layer):
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            if self.gradient_checkpointing and self.training:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs, output_attentions)
+
+                    return custom_forward
+
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(layer_module),
+                    next_kv,
+                    attention_mask,
+                    query_states,
+                    relative_pos,
+                    rel_embeddings,
+                )
+            else:
+                hidden_states = layer_module(
+                    next_kv,
+                    attention_mask,
+                    query_states=query_states,
+                    relative_pos=relative_pos,
+                    rel_embeddings=rel_embeddings,
+                    output_attentions=output_attentions,
+                )
+
+            if output_attentions:
+                hidden_states, att_m = hidden_states
+
+            if query_states is not None:
+                query_states = hidden_states
+                if isinstance(hidden_states, Sequence):
+                    next_kv = hidden_states[i + 1] if i + 1 < len(self.layer) else None
+            else:
+                next_kv = hidden_states
+
+            if output_attentions:
+                all_attentions = all_attentions + (att_m,)
+
+            # NOTE(Shih-Lun): fuse vlscore (e.g., clipscore) in the middle
+            if i in self.vlscore_insert_layers:
+                print ("vlscore added after layer #", i)
+                next_kv += self.vlscore_dropout(vlscore_states)
+
+            # NOTE(Shih-Lun) visual cross attention
+            # (visual_insert_layers[idx] >= 0) -- fuse after some deberta layers
+            while cur_vis_layer_idx < len(self.vis_layer) and \
+                  self.visual_insert_layers[ cur_vis_layer_idx ] == i:
+                # print ("visual added after layer #", i)
+
+                if output_hidden_states:
+                    all_hidden_states = all_hidden_states + (hidden_states,)
+
+                hidden_states = self.vis_layer[ cur_vis_layer_idx ](
+                    hidden_states=next_kv,
+                    visual_states=visual_states,
+                    attention_mask=cross_attention_mask,
+                    output_attentions=output_attentions,
+                )
+                
+                if output_attentions:
+                    hidden_states, att_m = hidden_states
+                    all_attentions = all_attentions + (att_m,)
+
+                next_kv = hidden_states
+                cur_vis_layer_idx += 1
+
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+            assert len(all_hidden_states) == len(self.vis_layer) + len(self.layer) + 1
+
+        if not return_dict:
+            return tuple(v for v in [hidden_states, all_hidden_states, all_attentions] if v is not None)
+        
+        return BaseModelOutput(
+            last_hidden_state=hidden_states,
+            hidden_states=all_hidden_states,
+            attentions=all_attentions
+        )
+
 class DebertaWithVisualModel(DebertaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
         self.embeddings = DebertaWithVisualEmbeddings(config)
-        self.encoder = DebertaEncoder(config)
+        self.encoder = DebertaWithVisualEncoder(config)
         self.z_steps = 0
         self.config = config
         # Initialize weights and apply final processing
@@ -219,10 +484,15 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
     def load_hf_pretrained_deberta(self, deberta_model_name):
         _hf_model = DebertaModel.from_pretrained(deberta_model_name)
 
-        self.load_state_dict(
-            _hf_model.state_dict(),
-            strict=False
-        )
+        _load_out = self.load_state_dict(
+                        _hf_model.state_dict(),
+                        strict=False
+                    )
+
+        print (f"[in load_hf_pretrained_deberta()] pretrained model: {deberta_model_name} loaded", )
+        print (f"[in load_hf_pretrained_deberta()] not in pt model: {_load_out.missing_keys}")
+        print (f"[in load_hf_pretrained_deberta()] not in new model: {_load_out.unexpected_keys}")
+
 
     def forward(
         self,
@@ -275,7 +545,10 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
         )
 
         encoder_outputs = self.encoder(
-            embedding_output,
+            embedding_output["text"],
+            embedding_output["visual"],
+            embedding_output["pooled_visual"],
+            embedding_output["vlscore"],
             attention_mask,
             output_hidden_states=True,
             output_attentions=output_attentions,
@@ -315,7 +588,7 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
 if __name__ == "__main__":
     # NOTE (Shih-Lun): unit tests
     import sys
-    config_json = sys.argv[1]
+    config_json = sys.argv[1] # e.g., "config/deberta_visual_base.json"
     hf_model_name = "microsoft/deberta-base"
 
     # test 01: huggingface model loading
@@ -325,6 +598,7 @@ if __name__ == "__main__":
                 )
             )    
     model.load_hf_pretrained_deberta(hf_model_name)
+    print ("[test 01] load pretrained weights: Success !!")
 
 
     # test 02: embeddings module
@@ -347,5 +621,17 @@ if __name__ == "__main__":
                     vlscores=vlscores
                 )
 
+    print ("[test 02] embedding module:")
     for key in emb_outs:
-        print (f"{key:16}: {emb_outs[key].size()}")
+        print (f"  {key:16}: {emb_outs[key].size()}")
+    print ("")
+
+    # test 03: transformer encoder module
+    enc_outs = model(
+        input_ids=input_ids,
+        visual_inputs=visual_inputs,
+        img_pred_ids=img_pred_ids,
+        vlscores=vlscores,
+    )
+    print ("[test 03] transformer encoder module:")
+    print (f"  last hidden: {enc_outs.last_hidden_state.size()}\n")
