@@ -33,6 +33,8 @@ class DebertaWithVisualConfig(PretrainedConfig):
         tie_visual_layers=True,
         use_pooled_vis_feat=True,
         use_patch_vis_feat=True,
+        do_causal_self_attn=False,
+        num_labels=3,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -77,3 +79,5 @@ class DebertaWithVisualConfig(PretrainedConfig):
         self.tie_visual_layers = tie_visual_layers
         self.use_pooled_vis_feat = use_pooled_vis_feat
         self.use_patch_vis_feat = use_patch_vis_feat
+        self.do_causal_self_attn = do_causal_self_attn
+        self.num_labels = num_labels

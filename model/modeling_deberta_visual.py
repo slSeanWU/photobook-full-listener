@@ -1,10 +1,21 @@
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 from transformers.models.deberta.modeling_deberta import *
-from transformers.models.bart.modeling_bart import BartAttention
+from transformers.models.bart.modeling_bart import (
+    BartAttention,
+    _make_causal_mask
+)
 
 from configuration_deberta_visual import DebertaWithVisualConfig
 
+@dataclass
+class WithVisualModelOutput(BaseModelOutput):
+    last_hidden_state: torch.FloatTensor = None
+    pooled_visual_state: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 class VisualCrossAttentionLayer(nn.Module):
     def __init__(self, config: DebertaConfig):
@@ -164,7 +175,8 @@ class DebertaWithVisualEmbeddings(nn.Module):
         """Shapes for extra visual input tensors (Shih-Lun)
 
            -- visual_inputs: (batch, n_ctx_img, visual_hidden_size, H, W)
-           -- img_pred_ids: (batch, n_ctx_img), e.g. (batch=2), [[0, 1, 0, 0, 2, 3], [1, 0, 2, 0, 0, 3]]
+           -- img_pred_ids: (batch, n_ctx_img), e.g. (batch=2), [[0, 1, 0, 0, 2, 3], [1, 0, 2, 0, 0, 3]],
+                            IMPORTANT !! -- the target img indices should be increasing ([*, 1, *, 2 *, 3, *]) 
            -- vlscores: (batch, seqlen, n_ctx_img)
         """
 
@@ -470,6 +482,7 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
 
         self.embeddings = DebertaWithVisualEmbeddings(config)
         self.encoder = DebertaWithVisualEncoder(config)
+        self.do_causal_self_attn = getattr(config, "do_causal_self_attn", False)
         self.z_steps = 0
         self.config = config
         # Initialize weights and apply final processing
@@ -490,8 +503,8 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
                     )
 
         print (f"[in load_hf_pretrained_deberta()] pretrained model: {deberta_model_name} loaded", )
-        print (f"[in load_hf_pretrained_deberta()] not in pt model: {_load_out.missing_keys}")
-        print (f"[in load_hf_pretrained_deberta()] not in new model: {_load_out.unexpected_keys}")
+        print (f"[in load_hf_pretrained_deberta()] weights not in pretrained model: {_load_out.missing_keys}")
+        print (f"[in load_hf_pretrained_deberta()] weights not in new model: {_load_out.unexpected_keys}")
 
 
     def forward(
@@ -529,7 +542,12 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
         if attention_mask is None:
-            attention_mask = torch.ones(input_shape, device=device)
+            if not self.do_causal_self_attn:
+                attention_mask = torch.ones(input_shape, device=device)
+            else:
+                attention_mask = _make_causal_mask(input_shape, visual_inputs.dtype, 0) \
+                                    .to(device)
+
         if token_type_ids is None:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
@@ -537,7 +555,7 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
             input_ids=input_ids,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
-            mask=attention_mask,
+            mask=None,
             inputs_embeds=inputs_embeds,
             visual_inputs=visual_inputs,
             img_pred_ids=img_pred_ids,
@@ -579,14 +597,113 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
         if not return_dict:
             return (sequence_output,) + encoder_outputs[(1 if output_hidden_states else 2) :]
 
-        return BaseModelOutput(
+        return WithVisualModelOutput(
             last_hidden_state=sequence_output,
+            pooled_visual_state=embedding_output["pooled_visual"],
             hidden_states=encoder_outputs.hidden_states if output_hidden_states else None,
             attentions=encoder_outputs.attentions,
         )
 
+class DebertaForPhotobookListener(DebertaPreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+        self.num_labels = getattr(config, "num_labels", 3)
+        self.intermediate_size = getattr(config, "clf_head_hidden_size", 256)
+        self.n_pred_img = config.n_pred_img
+        self.act_fn = ACT2FN[config.hidden_act]
+
+        self.deberta = DebertaWithVisualModel(config)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.fc1 = nn.Linear(config.hidden_size * 2, self.intermediate_size)
+        self.fc2 = nn.Linear(self.intermediate_size, self.num_labels)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        visual_inputs: Optional[torch.Tensor] = None,
+        vlscores: Optional[torch.Tensor] = None,
+        img_pred_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple, TokenClassifierOutput]:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, seqlen, n_pred_img)`):
+            Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
+            ignored (masked) labels should be set to -100 (pytorch default for CrossEntropyLoss())
+
+            Shapes for extra visual input tensors (by Shih-Lun)
+
+            -- visual_inputs: (batch, n_ctx_img, visual_hidden_size, H, W)
+            -- img_pred_ids:  (batch, n_ctx_img), e.g. (batch=2), [[0, 1, 0, 0, 2, 3], [1, 0, 2, 0, 0, 3]],
+                                IMPORTANT !! -- the target img indices should be increasing ([*, 1, *, 2 *, 3, *]) 
+            -- vlscores:      (batch, seqlen, n_ctx_img)
+        """
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = self.deberta(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            visual_inputs=visual_inputs,
+            vlscores=vlscores,
+            img_pred_ids=img_pred_ids,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        # NOTE (Shih-Lun): make shapes of "sequence_output" & "target_img_pooled_state" to be 
+        #                  (batch, seqlen, n_pred_img, hidden_size)
+        sequence_output = outputs.last_hidden_state.unsqueeze(-2).expand(-1, -1, self.n_pred_img, -1)
+        pooled_visual_state = outputs.pooled_visual_state
+        
+        # select pooled features of target imgs only
+        target_img_pooled_state = pooled_visual_state[ 
+                                        img_pred_ids.nonzero(as_tuple=True)
+                                    ].view(sequence_output.size(0), 1, self.n_pred_img, -1) \
+                                     .expand(-1, sequence_output.size(1), -1, -1)
+
+
+        # three target images share the same MLP classifier
+        clf_input = torch.cat([sequence_output, target_img_pooled_state], dim=-1)
+        clf_input = self.dropout(clf_input)
+
+        logits = self.act_fn(self.fc1(clf_input))
+        logits = self.dropout(logits)
+        logits = self.fc2(logits)
+
+        print (f"[in Listener.forward()] clf_input: {clf_input.size()}, logits: {logits.size()}, labels: {labels.size()}")
+
+        loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+
+        if not return_dict:
+            output = (logits,) + outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions
+        )
+
+
+# NOTE (Shih-Lun): below are unit tests
 if __name__ == "__main__":
-    # NOTE (Shih-Lun): unit tests
     import sys
     config_json = sys.argv[1] # e.g., "config/deberta_visual_base.json"
     hf_model_name = "microsoft/deberta-base"
@@ -610,7 +727,12 @@ if __name__ == "__main__":
     bs, seqlen, hidden_size = 4, 100, 768
     n_ctx_img, patchsize = 6, 16
     input_ids = torch.randint(0, 10, (bs, seqlen))
-    img_pred_ids = torch.randint(0, 4, (bs, n_ctx_img))
+    img_pred_ids = torch.LongTensor([
+                        [0, 1, 0, 0, 2, 3], 
+                        [1, 0, 2, 0, 0, 3],
+                        [0, 0, 0, 1, 2, 3],
+                        [1, 2, 3, 0, 0, 0],
+                    ])
     visual_inputs = torch.randn(bs, n_ctx_img, hidden_size, patchsize, patchsize)
     vlscores = torch.randn(bs, seqlen, n_ctx_img)
 
@@ -634,4 +756,24 @@ if __name__ == "__main__":
         vlscores=vlscores,
     )
     print ("[test 03] transformer encoder module:")
-    print (f"  last hidden: {enc_outs.last_hidden_state.size()}\n")
+    print (f"  last_hidden: {enc_outs.last_hidden_state.size()}\n")
+
+    # test 04: full photobook listener model
+    model = DebertaForPhotobookListener(
+                DebertaWithVisualConfig.from_json_file(
+                    config_json
+                )
+            )
+    model.deberta.load_hf_pretrained_deberta(hf_model_name)
+
+    n_pred_img = 3
+    labels = torch.randint(0, 3, (bs, seqlen, n_pred_img))
+    model_outs = model(
+        input_ids=input_ids,
+        visual_inputs=visual_inputs,
+        img_pred_ids=img_pred_ids,
+        vlscores=vlscores,
+        labels=labels,
+    )
+    print ("[test 04] full PhotoBook listener model:")
+    print (f"  logits: {model_outs.logits.size()}\n")
