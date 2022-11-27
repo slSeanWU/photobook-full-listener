@@ -640,12 +640,13 @@ class DebertaForPhotobookListener(DebertaPreTrainedModel):
             Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
             ignored (masked) labels should be set to -100 (pytorch default for CrossEntropyLoss())
 
-            Shapes for extra visual input tensors (by Shih-Lun)
+            Shapes for extra input tensors (by Shih-Lun)
 
-            -- visual_inputs: (batch, n_ctx_img, visual_hidden_size, H, W)
-            -- img_pred_ids:  (batch, n_ctx_img), e.g. (batch=2), [[0, 1, 0, 0, 2, 3], [1, 0, 2, 0, 0, 3]],
+            -- token_type_ids: (batch, seqlen), used to distinguish a token is from self (idx 0) or partner (idx 1)
+            -- visual_inputs:  (batch, n_ctx_img, visual_hidden_size, H, W)
+            -- img_pred_ids:   (batch, n_ctx_img), e.g. (batch=2), [[0, 1, 0, 0, 2, 3], [1, 0, 2, 0, 0, 3]],
                                 IMPORTANT !! -- the target img indices should be increasing ([*, 1, *, 2 *, 3, *]) 
-            -- vlscores:      (batch, seqlen, n_ctx_img)
+            -- vlscores:       (batch, seqlen, n_ctx_img)
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -727,6 +728,7 @@ if __name__ == "__main__":
     bs, seqlen, hidden_size = 4, 100, 768
     n_ctx_img, patchsize = 6, 16
     input_ids = torch.randint(0, 10, (bs, seqlen))
+    token_type_ids = torch.randint(0, 1, (bs, seqlen)) # used to distinguish a token is from self (id = 0) or partner (id = 1)
     img_pred_ids = torch.LongTensor([
                         [0, 1, 0, 0, 2, 3], 
                         [1, 0, 2, 0, 0, 3],
@@ -738,6 +740,7 @@ if __name__ == "__main__":
 
     emb_outs = emb_module(
                     input_ids=input_ids,
+                    token_type_ids=token_type_ids,
                     visual_inputs=visual_inputs,
                     img_pred_ids=img_pred_ids,
                     vlscores=vlscores
@@ -751,6 +754,7 @@ if __name__ == "__main__":
     # test 03: transformer encoder module
     enc_outs = model(
         input_ids=input_ids,
+        token_type_ids=token_type_ids,
         visual_inputs=visual_inputs,
         img_pred_ids=img_pred_ids,
         vlscores=vlscores,
@@ -770,6 +774,7 @@ if __name__ == "__main__":
     labels = torch.randint(0, 3, (bs, seqlen, n_pred_img))
     model_outs = model(
         input_ids=input_ids,
+        token_type_ids=token_type_ids,
         visual_inputs=visual_inputs,
         img_pred_ids=img_pred_ids,
         vlscores=vlscores,
