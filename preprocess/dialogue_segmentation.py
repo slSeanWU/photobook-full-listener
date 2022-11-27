@@ -1,3 +1,5 @@
+# Modified from https://github.com/dmg-photobook/photobook_dataset/blob/master/segmentation/utils/dialogue_segmentation.py
+
 import os
 import json
 import pickle
@@ -168,7 +170,7 @@ def dialogue_segmentation(logs, selection, seg_verbose=False):
 
     return dialogue_sections
 
-
+#NOTE: add this function
 def parse(section):
     # a list of messages
     ret = []
