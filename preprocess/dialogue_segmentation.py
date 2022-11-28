@@ -13,6 +13,8 @@ sys.path.insert(0, dirname(dirname(abspath(__file__))))
 
 from processor import Log
 
+round_counter = 0
+
 
 # Log Loader # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
@@ -81,7 +83,7 @@ def clean_clicks(round_data):
     :return: A Round object that is cleared of multiple clicks
     """
     filtered_data = []
-    speaker_selections = defaultdict(lambda: [])
+    speaker_selections = dict({"A": [], "B": []})
     messages = round_data.messages.copy()
     messages.reverse()
 
@@ -98,6 +100,7 @@ def clean_clicks(round_data):
                 speaker_selections[message.speaker].append(target)
                 filtered_data.append(message)
         else:
+            assert "<selection>" not in message.text
             filtered_data.append(message)
 
     filtered_data.reverse()
@@ -141,7 +144,7 @@ def get_target(message):
     if not len(message.text.split()) == 3:
         print("Received message not a selection!")
         return None
-    return message.text.split()[2]
+    return tuple([message.agent_id] + message.text.split()[1:])
 
 
 def dialogue_segmentation(logs, selection, seg_verbose=False):
@@ -183,6 +186,10 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
     agent_ids = game.agent_ids
 
     for round_data in game.rounds:
+        # NOTE (Shih-Lun): filter out rounds with mistakes
+        if round_data.total_score < 6:
+            continue
+    
         selections = []
         messages = round_data.messages
 
@@ -196,6 +203,18 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
         if len(selections) > 6:
             messages, cleaning_counter = clean_clicks(round_data)
             cleaning_total += cleaning_counter
+
+        selections = []
+        for message in messages:
+            if message.type == 'selection':
+                selections.append((message.message_id, message.speaker, message.text))
+
+        # NOTE (Shih-Lun): filter out rounds with >6 answers (rare exceptions)
+        if len(selections) != 6:
+            continue
+
+        global round_counter
+        round_counter += 1
 
         #NOTE: a dictionary per round
         sections = {'segments': [], 'image_set': dict(), 'other': []} #[]
@@ -724,6 +743,10 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
         }
         game_sections.append(sections)
         if seg_verbose: print("{} dialogue sections encountered in round".format(len(sections['other'])))
+
+        assert sum([len(sections['other'][i][1]) for i in range(len(sections['other']))]) == 6, \
+               sum([len(sections['other'][i][1]) for i in range(len(sections['other']))])
+
         section_counter += len(sections['other'])
 
     return game_sections, cleaning_total, section_counter
@@ -744,7 +767,7 @@ if __name__ == '__main__':
         print("Alert: -split argument takes a list of length 2 with validation and test size in %. Using default 15/15/70 split.")
         split = [15,15]
 
-    logs_dir = "../logs/"
+    logs_dir = "logs/"
     logs = load_logs(logs_dir, data_path)
 
     # Create a new split
@@ -787,5 +810,7 @@ if __name__ == '__main__':
         dialogue_sections = dialogue_segmentation(logs, set_ids, seg_verbose=False)
         with open(os.path.join(data_path, "{}_sections.pickle".format(set_name)), 'wb') as f:
             pickle.dump(dialogue_sections, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    print (f"Got {round_counter} out of {5 * len(logs)} rounds without mistake (total_score == 6)")
 
     print("Done.")

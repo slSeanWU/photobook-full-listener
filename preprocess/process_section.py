@@ -41,6 +41,40 @@ def calc_clip(segments, image_set, image_feats_lookup, model, device):
     clips = np.array(clips)     # [N_segments, 6]
     return clips
 
+def mark_labeling_actions(self_spk_id, sec_utt_and_act, img_idx_dict):
+    """ Added by Shih-Lun
+    """
+    utt_cnt = 0
+    labeled_imgs = set()
+    sec_labeling_acts = []
+    for subsec in sec_utt_and_act:
+        subsec_utts, subsec_acts = subsec
+        utt_cnt += len(subsec_utts)
+        for label_act in subsec_acts:
+            assert isinstance(label_act, tuple) and len(label_act) == 3
+            act_spk_id, com_or_dif, label_img_id = label_act
+            assert label_img_id in img_idx_dict
+
+            # answer from the player itself, add to labeling actions
+            if act_spk_id == self_spk_id:
+                sec_labeling_acts.append(
+                    (utt_cnt, com_or_dif, img_idx_dict[label_img_id])
+                ) 
+                # tuple format --
+                # (
+                #   num of utts before this action, 
+                #   "<com> or "<dif>",
+                #   idx of image being labeled (possible values: 0, 1, 2, 3, 4, 5)
+                # )
+
+                labeled_imgs.add(label_img_id)
+
+    # print (sec_labeling_acts)
+    assert len(sec_labeling_acts) == 3 # photobook game setting
+
+    return sec_labeling_acts, labeled_imgs
+
+
 def process_section(sections, image_feats_lookup, model, device):
     """
     1 INPUT section
@@ -49,6 +83,11 @@ def process_section(sections, image_feats_lookup, model, device):
     
     2 MODIFIED sections
         segments: [(spk_id, sentence), ...]
+        label_actions: [
+            (# utts before action, "<com> or "<dif>", idx of img being labeled (in {0, 1, 2, 3, 4, 5}), 
+            ...
+        ]
+        image_pred_ids: e.g., [0, 1, 0, 2, 0, 3] if 2nd, 4th, 6th imgs are highlighted
         spk_id:
         image_set: [O,O,O,O,O,O]
         clip_scores: [(x,x,x,x,x,x), ...]
@@ -56,12 +95,31 @@ def process_section(sections, image_feats_lookup, model, device):
     """
     ret = []
     for sec in sections:
+        # print (sec["other"])
+        
+        assert sum([len(sec["other"][i][0]) for i in range(len(sec["other"]))]) == len(sec["segments"])
         for spk in sec["image_set"]:
+            assert isinstance(sec["image_set"][spk], list)
+            img_idx_dict = {img : i for i, img in enumerate(sec["image_set"][spk])}
             new_sec = dict()
             new_sec["agent_id"] = spk
             new_sec["segments"] = sec["segments"]
             new_sec["image_set"] = sec["image_set"][spk]
-            new_sec["clip_scores"] = calc_clip(sec["segments"], sec["image_set"][spk], image_feats_lookup, model, device)
+            new_sec["label_actions"], highlighted_imgs = mark_labeling_actions(spk, sec["other"], img_idx_dict)
+
+            # NOTE (Shih-Lun): added to conform to model inputs, 
+            #                  e.g., [0, 1, 0, 2, 0, 3] if 2nd, 4th, 6th imgs are highlighted
+            new_sec["image_pred_ids"] = [0] * 6
+            highlighted_cnt = 0
+            for i, img in enumerate(sec["image_set"][spk]):
+                if img in highlighted_imgs:
+                    highlighted_cnt += 1
+                    new_sec["image_pred_ids"][i] = highlighted_cnt
+
+            # print (new_sec["label_actions"])
+            # print (new_sec["image_pred_ids"], '\n')
+
+            # new_sec["clip_scores"] = calc_clip(sec["segments"], sec["image_set"][spk], image_feats_lookup, model, device)
 
             ret.append(new_sec)
     return ret
@@ -86,8 +144,9 @@ def process(filename, image_feats_lookup, model, device, split):
 
 if __name__ == '__main__':
     model, device = get_clip_mdl()
-    image_dir = "../../images/"
+    image_dir = "../images/"
     image_feats_lookup = process_images(image_dir, model, device)
 
-    for split in ["train", "val", "test"]:
+    # for split in ["train", "val", "test"]:
+    for split in ["dev"]:
         process(f"../data/{split}_sections.pickle", image_feats_lookup, model, device, split)
