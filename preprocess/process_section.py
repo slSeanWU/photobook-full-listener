@@ -74,6 +74,15 @@ def mark_labeling_actions(self_spk_id, sec_utt_and_act, img_idx_dict):
 
     return sec_labeling_acts, labeled_imgs
 
+def mark_spk(segments, self):
+    for i in range(len(segments)):
+        spk, utt = segments[i]
+        if spk == self:
+            segments[i] = ('self', utt)
+        else:
+            segments[i] = ('other', utt)
+
+    return segments
 
 def process_section(sections, image_feats_lookup, model, device):
     """
@@ -103,8 +112,9 @@ def process_section(sections, image_feats_lookup, model, device):
             img_idx_dict = {img : i for i, img in enumerate(sec["image_set"][spk])}
             new_sec = dict()
             new_sec["agent_id"] = spk
-            new_sec["segments"] = sec["segments"]
+            new_sec["segments"] = mark_spk(sec["segments"], spk)[:]
             new_sec["image_set"] = sec["image_set"][spk]
+            """
             new_sec["label_actions"], highlighted_imgs = mark_labeling_actions(spk, sec["other"], img_idx_dict)
 
             # NOTE (Shih-Lun): added to conform to model inputs, 
@@ -115,7 +125,7 @@ def process_section(sections, image_feats_lookup, model, device):
                 if img in highlighted_imgs:
                     highlighted_cnt += 1
                     new_sec["image_pred_ids"][i] = highlighted_cnt
-
+            """
             # print (new_sec["label_actions"])
             # print (new_sec["image_pred_ids"], '\n')
 
@@ -144,9 +154,9 @@ def process(filename, image_feats_lookup, model, device, split):
 
 if __name__ == '__main__':
     model, device = get_clip_mdl()
-    image_dir = "../images/"
+    image_dir = "../data/images/"
     image_feats_lookup = process_images(image_dir, model, device)
 
-    # for split in ["train", "val", "test"]:
-    for split in ["dev"]:
+    # for split in ["train", "valid", "test"]:
+    for split in ["test"]:
         process(f"../data/{split}_sections.pickle", image_feats_lookup, model, device, split)
