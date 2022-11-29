@@ -1,5 +1,6 @@
 # Modified from https://github.com/dmg-photobook/photobook_dataset/blob/master/segmentation/utils/dialogue_segmentation.py
 
+from processor import Log
 import os
 import json
 import pickle
@@ -11,7 +12,6 @@ import sys
 from os.path import dirname, abspath
 sys.path.insert(0, dirname(dirname(abspath(__file__))))
 
-from processor import Log
 
 round_counter = 0
 
@@ -58,9 +58,11 @@ def generate_game_sets(sample_size, domain_dict, remaining_total):
     sampled_games = 0
 
     for domain_id, games in domain_dict.items():
-        domain_sample_size = int(len(games) / remaining_total * sample_size + 0.5)
+        domain_sample_size = int(
+            len(games) / remaining_total * sample_size + 0.5)
         sampled_games += domain_sample_size
-        game_set.extend([(domain_id, game_id) for game_id in rd.sample(games, domain_sample_size)])
+        game_set.extend([(domain_id, game_id)
+                        for game_id in rd.sample(games, domain_sample_size)])
 
     for domain_id, game_id in game_set:
         games = domain_dict[domain_id]
@@ -163,17 +165,23 @@ def dialogue_segmentation(logs, selection, seg_verbose=False):
         game_id = game.game_id
         if selection and game_id not in selection:
             continue
-        game_sections, cleaning_total, section_counter = game_segmentation(game, seg_verbose, cleaning_total, section_counter)
+        game_sections, cleaning_total, section_counter = game_segmentation(
+            game, seg_verbose, cleaning_total, section_counter)
 
         dialogue_sections.append((game_id, game_sections))
 
-    if seg_verbose: print("Total of {} duplicate labeling action(s) removed.".format(cleaning_total))
-    if seg_verbose: print("Processed {} dialogue(s).".format(len(dialogue_sections)))
-    if seg_verbose: print("Generated a total of {} dialogue section(s).".format(section_counter))
+    if seg_verbose:
+        print("Total of {} duplicate labeling action(s) removed.".format(cleaning_total))
+    if seg_verbose:
+        print("Processed {} dialogue(s).".format(len(dialogue_sections)))
+    if seg_verbose:
+        print("Generated a total of {} dialogue section(s).".format(section_counter))
 
     return dialogue_sections
 
-#NOTE: add this function
+# NOTE: add this function
+
+
 def parse(section):
     # a list of messages
     ret = []
@@ -181,24 +189,30 @@ def parse(section):
         ret.append((msg.agent_id, msg.text))
     return ret
 
+
 def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
     game_sections = []
     agent_ids = game.agent_ids
 
     for round_data in game.rounds:
+
         # NOTE (Shih-Lun): filter out rounds with mistakes
         if round_data.total_score < 6:
             continue
-    
+
         selections = []
         messages = round_data.messages
 
-        if seg_verbose: print("\n")
+        if seg_verbose:
+            print("\n")
         for message in round_data.messages:
-            if seg_verbose: print("{}: {}".format(message.speaker, message.text))
+            if seg_verbose:
+                print("{}: {}".format(message.speaker, message.text))
             if message.type == 'selection':
-                selections.append((message.message_id, message.speaker, message.text))
-        if seg_verbose: print("\n")
+                selections.append(
+                    (message.message_id, message.speaker, message.text))
+        if seg_verbose:
+            print("\n")
 
         if len(selections) > 6:
             messages, cleaning_counter = clean_clicks(round_data)
@@ -207,7 +221,8 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
         selections = []
         for message in messages:
             if message.type == 'selection':
-                selections.append((message.message_id, message.speaker, message.text))
+                selections.append(
+                    (message.message_id, message.speaker, message.text))
 
         # NOTE (Shih-Lun): filter out rounds with >6 answers (rare exceptions)
         if len(selections) != 6:
@@ -216,548 +231,52 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
         global round_counter
         round_counter += 1
 
-        #NOTE: a dictionary per round
-        sections = {'segments': [], 'image_set': dict(), 'other': []} #[]
+        # NOTE: a dictionary per round
+        sections = {'segments': [], 'image_set': dict(), 'targets': [],
+                    'roundnr': round_data.round_nr, 'gameid': game.game_id,
+                    'rounddata': round_data}
 
-        current_section = []
-        current_targets = []
-        previous_selection = None
-        previous_turn = None
-        skip = 0
-        for i, message in enumerate(messages):
-            if skip > 0:
-                skip -= 1
-                continue
-            if seg_verbose: print("{}: {}".format(message.speaker, message.text))
-            if seg_verbose: print("--> Current section contains {} utterances".format(len(current_section)))
+        i = 0
+        while i < len(messages):
+            message = messages[i]
+            current_section = []
+            current_targets = []
             if message.type == 'text':
-                if previous_turn and seg_verbose: print("--> Previous turn text: ", previous_turn.text)
-                if previous_turn and is_selection(previous_turn):
-                    if seg_verbose: print("--> Previous turn was selection")
-                    if is_common_label(previous_selection):
-                        if seg_verbose: print("--> Previous selection was common")
-                        if previous_selection.speaker != message.speaker:
-                            if seg_verbose: print("--> Previous selection was from other speaker")
-                            next_message = messages[i + 1]
-                            if next_message.type == 'selection':
-                                if seg_verbose: print("--> Next turn is a selection")
-                                if next_message.speaker == message.speaker:
-                                    if seg_verbose: print("--> Next selection is from same speaker")
-                                    if is_common_label(next_message):
-                                        if seg_verbose: print("--> Next selection is common")
-                                        if previous_selection.text == next_message.text:
-                                            if seg_verbose: print("--> Case 1")
-                                            # Case: After one speaker selected an image as common, the other speaker makes one utterance and marks the same image as common
-                                            # Resolution: The previous section is saved with the common image as referent and a new section is initialised with the trailing utterance of the second speaker
-                                            current_targets.append(get_target(previous_selection))
-                                            if current_section:
-                                                sections['segments'] += parse(current_section)
-                                                sections['other'].append((current_section, set(current_targets)))
+                current_section.append(message)
+                i += 1
+                while messages[i].type == 'selection':
+                    current_targets.append(get_target(messages[i]))
+                    i += 1
+                i -= 1
+                sections['segments'] += parse(current_section)
+                sections['targets'].append(
+                    (current_section[0], set(current_targets)))
+            i += 1
 
-                                            current_section = [message]
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = message
-                                            skip = 1
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 2")
-                                            # Case: After one speaker selected an image as common, the other speaker makes one utterance and marks an other image as common
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents. A new section is initialised empty
-                                            current_targets.extend(
-                                                [get_target(previous_selection), get_target(next_message)])
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                    else:
-                                        if get_target(previous_selection) == get_target(next_message):
-                                            if seg_verbose: print("--> Case 3")
-                                            # Case: After one speaker selected an image as common, the other speaker makes one utterance and marks the same image as different
-                                            # Resolution: The previous section is saved with the common image as referent and a new section is initialised with the trailing utterance of the second speaker
-                                            current_targets.append(get_target(previous_selection))
-                                            if current_section:
-                                                sections['segments'] += parse(current_section)
-                                                sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = [message]
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = message
-                                            skip = 1
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 4")
-                                            # Case: After one speaker selected an image as common, the other speaker makes one utterance and marks an other image as different
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents. A new section is initialised empty
-                                            current_targets.extend(
-                                                [get_target(previous_selection), get_target(next_message)])
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                else:
-                                    if seg_verbose: print("--> Case 5")
-                                    # Case: After one speaker selected an image as common, the other speaker makes one utterance and the first speaker marks a second image
-                                    # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents
-                                    current_targets.extend(
-                                        [get_target(previous_selection), get_target(next_message)])
-                                    current_section.append(message)
-                                    sections['segments'] += parse(current_section)
-                                    sections['other'].append((current_section, set(current_targets)))
-
-                                    current_section = []
-                                    current_targets = []
-                                    previous_selection = next_message
-                                    previous_turn = next_message
-                                    skip = 1
-                                    continue
-                            else:
-                                if next_message.speaker == message.speaker:
-                                    if i + 2 < len(messages):
-                                        second_next_message = messages[i + 2]
-                                        if second_next_message.speaker == next_message.speaker and second_next_message.type == 'selection' and get_target(
-                                                second_next_message) == get_target(previous_selection):
-                                            if seg_verbose: print("--> Case 6")
-                                            # Case: After one speaker selected an image as common, the other speaker makes two utterances and marks the same image
-                                            # Resolution: The trailing utterances are added to the current section and the current section is saved with the common image as referent
-                                            current_targets.append(get_target(previous_selection))
-                                            current_section.append(message)
-                                            current_section.append(next_message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = second_next_message
-                                            previous_turn = second_next_message
-                                            skip = 2
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 7")
-                                            # Case: After one speaker selected an image as common, the other speaker makes multiple utterances without marking any images
-                                            # Resolution: Save the current section with the target marked as common and initialise a new section with the current utterance
-                                            current_targets.append(get_target(previous_selection))
-                                            if current_section:
-                                                sections['segments'] += parse(current_section)
-                                                sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = [message]
-                                            current_targets = []
-                                            previous_turn = message
-                                            continue
-                                    else:
-                                        pass
-                                else:
-                                    if seg_verbose: print("--> Case 9")
-                                    # Case: After one speaker selected an image as common, there is an interaction between the speakers
-                                    # Resolution: Save the current section with the target marked as common and initialise a new section with the current utterance
-                                    current_targets.append(get_target(previous_selection))
-                                    if current_section:
-                                        sections['segments'] += parse(current_section)
-                                        sections['other'].append((current_section, set(current_targets)))
-
-                                    current_section = [message]
-                                    current_targets = []
-                                    previous_turn = message
-                                    continue
-                        else:
-                            next_message = messages[i + 1]
-                            if next_message.type == 'selection':
-                                if next_message.speaker != message.speaker:
-                                    if is_common_label(next_message):
-                                        if previous_selection.text == next_message.text:
-                                            if seg_verbose: print("--> Case 10")
-                                            # Case: After one speaker selected an image as common, he or she adds something, leading to the other speaker marking the same image as common as well
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with the common image as referent. A new section is initialised empty
-                                            current_targets.append(get_target(previous_selection))
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 11")
-                                            # Case: After one speaker selected an image as common,  he or she adds something, leading to the other speaker marking a different image as common
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with both disagreed referents. A new section is initialised empty
-                                            current_targets.extend(
-                                                [get_target(previous_selection), get_target(next_message)])
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                    else:
-                                        if get_target(previous_selection) == get_target(next_message):
-                                            if seg_verbose: print("--> Case 12")
-                                            # Case: After one speaker selected an image as common, he or she adds something, leading to the other speaker marking the same image as different
-                                            # Resolution: The current section is saved with the disagreed image as referent. A new section is initialised with the trailing utterance
-                                            current_targets.append(get_target(next_message))
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = [message]
-                                            current_targets = []
-                                            previous_selection = previous_selection
-                                            previous_turn = message
-                                            skip = 1
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 13")
-                                            # Case: After one speaker selected an image as common, he or she adds something, leading to the other speaker marking another image as different
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents. A new section is initialised empty
-                                            current_targets.extend(
-                                                [get_target(previous_selection), get_target(next_message)])
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                else:
-                                    if seg_verbose: print("--> Case 14")
-                                    # Case: After one speaker selected an image as common, he or she adds something and marks a second image
-                                    # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents. A new section is initialised empty
-                                    current_targets.extend(
-                                        [get_target(previous_selection), get_target(next_message)])
-                                    current_section.append(message)
-                                    sections['segments'] += parse(current_section)
-                                    sections['other'].append((current_section, set(current_targets)))
-
-                                    current_section = []
-                                    current_targets = []
-                                    previous_selection = next_message
-                                    previous_turn = next_message
-                                    skip = 1
-                                    continue
-                            else:
-                                if seg_verbose: print("--> Case 15")
-                                # Case: After one speaker selected an image as common, he or she adds multiple utterances
-                                # Resolution: Save the current section with the target marked as common and initialise a new section with the current utterance
-                                current_targets.append(get_target(previous_selection))
-                                if current_section:
-                                    sections['segments'] += parse(current_section)
-                                    sections['other'].append((current_section, set(current_targets)))
-
-                                current_section = [message]
-                                current_targets = []
-                                previous_turn = message
-                                continue
-                    else:
-                        if seg_verbose: print("--> Previous selection was different")
-                        if previous_selection.speaker != message.speaker:
-                            if seg_verbose: print("--> Previous speaker was the other participant")
-                            next_message = messages[i + 1]
-                            if next_message.type == 'selection':
-                                if seg_verbose: print("--> Next message is selection")
-                                if next_message.speaker == message.speaker:
-                                    if not is_common_label(next_message):
-                                        if previous_selection.text == next_message.text:
-                                            if seg_verbose: print("--> Case 16")
-                                            # Case: After one speaker selected an image as different, the other speaker makes one utterance and marks the same image as different
-                                            # Resolution: The previous section is saved with the wrongly labeled image as referent and a new section is initialised with the trailing utterance of the second speaker
-                                            current_targets.append(get_target(previous_selection))
-                                            if current_section:
-                                                sections['segments'] += parse(current_section)
-                                                sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = [message]
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = message
-                                            skip = 1
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 17")
-                                            # Case: After one speaker selected an image as different, the other speaker makes one utterance and marks another image as different
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents
-                                            current_targets.extend(
-                                                [get_target(previous_selection), get_target(next_message)])
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                    else:
-                                        if get_target(previous_selection) == get_target(next_message):
-                                            if seg_verbose: print("--> Case 18")
-                                            # Case: After one speaker selected an image as different, the other speaker makes one utterance and marks the same image as common
-                                            # Resolution: The previous section is saved with the disagreed image as referent and a new section is initialised with the trailing utterance of the second speaker
-                                            current_targets.append(get_target(previous_selection))
-                                            if current_section:
-                                                sections['segments'] += parse(current_section)
-                                                sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = [message]
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = message
-                                            skip = 1
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 19")
-                                            # Case: After one speaker selected an image as different, the other speaker makes one utterance and marks a different image as common
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents
-                                            current_targets.extend(
-                                                [get_target(previous_selection), get_target(next_message)])
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-
-                                else:
-                                    if seg_verbose: print("--> Case 20")
-                                    # Case: After one speaker selected an image as different, the other speaker makes one utterance and the first speaker marks a second image
-                                    # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents. A new section is initialised empty
-                                    current_targets.extend(
-                                        [get_target(previous_selection), get_target(next_message)])
-                                    current_section.append(message)
-                                    sections['segments'] += parse(current_section)
-                                    sections['other'].append((current_section, set(current_targets)))
-
-                                    current_section = []
-                                    current_targets = []
-                                    previous_selection = next_message
-                                    previous_turn = next_message
-                                    skip = 1
-                                    continue
-                            else:
-                                if seg_verbose: print("--> Next message is regular utterance")
-                                if next_message.speaker == message.speaker:
-                                    if seg_verbose: print("--> Next speaker is current speaker")
-                                    if i + 2 < len(messages):
-                                        second_next_message = messages[i + 2]
-                                        if second_next_message.speaker == next_message.speaker and second_next_message.type == 'selection' and get_target(
-                                                second_next_message) == get_target(previous_selection):
-                                            if seg_verbose: print("--> Case 21")
-                                            # Case: After one speaker selected an image as different, the other speaker makes two utterances and marks the same image
-                                            # Resolution: The trailing utterances are added to the current section and the current section is saved with the marked image as referent
-                                            current_targets.append(get_target(previous_selection))
-                                            current_section.append(message)
-                                            current_section.append(next_message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = second_next_message
-                                            previous_turn = second_next_message
-                                            skip = 2
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 22")
-                                            # Case: After one speaker selected an image as different, the other speaker makes multiple utterances without marking any images
-                                            # Resolution: Save the current section with the target marked as different and initialise a new section with the current utterance
-                                            current_targets.append(get_target(previous_selection))
-                                            if current_section:
-                                                sections['segments'] += parse(current_section)
-                                                sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = [message]
-                                            current_targets = []
-                                            previous_turn = message
-                                            continue
-                                    else:
-                                        pass
-                                else:
-                                    if seg_verbose: print("--> Case 24")
-                                    # Case: After one speaker selected an image as different, there is an interaction between the speakers
-                                    # Resolution: Save the current section with the target marked as different and initialise a new section with the current utterance
-                                    current_targets.append(get_target(previous_selection))
-                                    if current_section:
-                                        sections['segments'] += parse(current_section)
-                                        sections['other'].append((current_section, set(current_targets)))
-
-                                    current_section = [message]
-                                    current_targets = []
-                                    previous_turn = message
-                                    continue
-                        else:
-                            if seg_verbose: print("--> Previous speaker was the same participant")
-                            next_message = messages[i + 1]
-                            if next_message.type == 'selection':
-                                if seg_verbose: print("--> Next message is selection")
-                                if next_message.speaker != message.speaker:
-                                    if not is_common_label(next_message):
-                                        if previous_selection.text == next_message.text:
-                                            if seg_verbose: print("--> Case 25")
-                                            # Case: After one speaker selected an image as different, he or she adds something, leading to the other speaker marking the same image as different
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with the wrongly labeled image as referent
-                                            current_targets.append(get_target(previous_selection))
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 26")
-                                            # Case: After one speaker selected an image as different, he or she adds something, leading to the other speaker marking a different image as different
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with both disagreed referents
-                                            current_targets.extend(
-                                                [get_target(previous_selection), get_target(next_message)])
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                    else:
-                                        if get_target(previous_selection) == get_target(next_message):
-                                            if seg_verbose: print("--> Case 27")
-                                            # Case: After one speaker selected an image as different, he or she adds something, leading to the other speaker marking the same image as common
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with the disagreed image as referent
-                                            current_targets.append(get_target(next_message))
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = [message]
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = message
-                                            skip = 1
-                                            continue
-                                        else:
-                                            if seg_verbose: print("--> Case 28")
-                                            # Case: After one speaker selected an image as different, he or she adds something, leading to the other speaker marking another image as common
-                                            # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents
-                                            current_targets.extend(
-                                                [get_target(previous_selection), get_target(next_message)])
-                                            current_section.append(message)
-                                            sections['segments'] += parse(current_section)
-                                            sections['other'].append((current_section, set(current_targets)))
-
-                                            current_section = []
-                                            current_targets = []
-                                            previous_selection = next_message
-                                            previous_turn = next_message
-                                            skip = 1
-                                            continue
-                                else:
-                                    if seg_verbose: print("--> Case 29")
-                                    # Case: After one speaker selected an image as different, he or she adds something and marks a second image
-                                    # Resolution: The trailing utterance is added to the current section and the current section is saved with both referents
-                                    current_targets.extend(
-                                        [get_target(previous_selection), get_target(next_message)])
-                                    current_section.append(message)
-                                    sections['segments'] += parse(current_section)
-                                    sections['other'].append((current_section, set(current_targets)))
-
-                                    current_section = []
-                                    current_targets = []
-                                    previous_selection = next_message
-                                    previous_turn = next_message
-                                    skip = 1
-                                    continue
-                            else:
-                                if seg_verbose: print("--> Case 30")
-                                # Case: After one speaker selected an image as different, he or she adds an utterance
-                                # Resolution: Save the current section with the target marked as different and initialise a new section with the current utterance
-                                if current_section and current_targets:
-                                    sections['segments'] += parse(current_section)
-                                    sections['other'].append((current_section, set(current_targets)))
-                                current_section = [message]
-                                current_targets = []
-                                previous_turn = message
-                                continue
-                else:
-                    if seg_verbose: print("--> Case 31")
-                    # Case: Regular utterance following another regular utterance
-                    # Resolution: Add utterance to current section
-                    current_section.append(message)
-                    current_targets = []
-                    previous_turn = message
-                    continue
-            elif message.type == 'selection':
-                if seg_verbose: print("--> Selection")
-                if current_section:
-                    if seg_verbose: print("--> Case 32")
-                    # A speaker marks an image
-                    # Resolution: Add the label of the selection to the set of current targets
-                    if seg_verbose: print("--> Adding target")
-                    current_targets.append(get_target(message))
-                    previous_selection = message
-                    previous_turn = message
-                    continue
-                else:
-                    if seg_verbose: print("--> Case 33")
-                    if seg_verbose: print("--> Current section is empty. Skipping selection")
-                    continue
-            else:
-                continue
-
-        if current_section and current_targets:
-            sections['segments'] += parse(current_section)
-            sections['other'].append((current_section, set(current_targets)))
-
-        #NOTE: separate image set of 2 players
+        # NOTE: separate image set of 2 players
         sections['image_set'] = {
-                agent_ids[0]: round_data.images["A"], 
-                agent_ids[1]: round_data.images["B"]
+            agent_ids[0]: round_data.images["A"],
+            agent_ids[1]: round_data.images["B"]
         }
         game_sections.append(sections)
-        if seg_verbose: print("{} dialogue sections encountered in round".format(len(sections['other'])))
+        if seg_verbose:
+            print("{} dialogue sections encountered in round".format(
+                len(sections['targets'])))
 
-        assert sum([len(sections['other'][i][1]) for i in range(len(sections['other']))]) == 6, \
-               sum([len(sections['other'][i][1]) for i in range(len(sections['other']))])
+        assert sum([len(sections['targets'][i][1]) for i in range(len(sections['targets']))]) == 6, \
+            sum([len(sections['targets'][i][1])
+                for i in range(len(sections['targets']))])
 
-        section_counter += len(sections['other'])
+        section_counter += len(sections['targets'])
 
     return game_sections, cleaning_total, section_counter
-
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-data_path", type=str, default="../data")
     parser.add_argument("-new_split", type=bool, default=False)
-    parser.add_argument("-split", type=list, default=[15,15])
+    parser.add_argument("-split", type=list, default=[15, 15])
 
     args = parser.parse_args()
     data_path = args.data_path
@@ -765,7 +284,7 @@ if __name__ == '__main__':
     split = list(args.split)
     if len(split) != 2:
         print("Alert: -split argument takes a list of length 2 with validation and test size in %. Using default 15/15/70 split.")
-        split = [15,15]
+        split = [15, 15]
 
     logs_dir = "logs/"
     logs = load_logs(logs_dir, data_path)
@@ -781,9 +300,12 @@ if __name__ == '__main__':
 
         data_split = dict()
         remaining_total = len(logs)
-        data_split["dev"], domain_dict, remaining_total = generate_game_sets(60, domain_dict, remaining_total)
-        data_split["val"], domain_dict, remaining_total = generate_game_sets(val_size, domain_dict, remaining_total)
-        data_split["test"], domain_dict, remaining_total = generate_game_sets(val_size, domain_dict, remaining_total)
+        data_split["dev"], domain_dict, remaining_total = generate_game_sets(
+            60, domain_dict, remaining_total)
+        data_split["val"], domain_dict, remaining_total = generate_game_sets(
+            val_size, domain_dict, remaining_total)
+        data_split["test"], domain_dict, remaining_total = generate_game_sets(
+            val_size, domain_dict, remaining_total)
 
         train_set = []
         for domain_id, games in domain_dict.items():
@@ -793,7 +315,6 @@ if __name__ == '__main__':
 
         with open(os.path.join(data_path, "new_data_splits.json"), 'w') as f:
             json.dump(data_split, f)
-
 
     # Load a pre-defined split
     else:
@@ -807,10 +328,12 @@ if __name__ == '__main__':
 
     for set_name in ['dev', 'val', 'test', 'train']:
         set_ids = data_split[set_name]
-        dialogue_sections = dialogue_segmentation(logs, set_ids, seg_verbose=False)
+        dialogue_sections = dialogue_segmentation(
+            logs, set_ids, seg_verbose=False)
         with open(os.path.join(data_path, "{}_sections.pickle".format(set_name)), 'wb') as f:
             pickle.dump(dialogue_sections, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    print (f"Got {round_counter} out of {5 * len(logs)} rounds without mistake (total_score == 6)")
+    print(
+        f"Got {round_counter} out of {5 * len(logs)} rounds without mistake (total_score == 6)")
 
     print("Done.")
