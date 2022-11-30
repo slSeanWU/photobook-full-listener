@@ -31,16 +31,20 @@ def calc_clip(segments, image_set, image_feats_lookup, model, device):
 
     # clip score for each utterance
     clips = []
+    img_feats = np.tile(img_feats, (len(segments), 1))
+    utts = []
+
     for spk, utt in segments:
-        utts = [utt] * 6
+        utts += [utt] * 6
 
-        # get image-text clipscore, where len(per_instance_image_text) = 6
-        _, per_instance_image_text, candidate_feats = get_clip_score(
-            model, img_feats, utts, device)
+    # get image-text clipscore, where len(per_instance_image_text) = 6
+    _, per_instance_image_text, candidate_feats = get_clip_score(
+        model, img_feats, utts, device)
 
-        clips.append(per_instance_image_text)
+    clips.append(per_instance_image_text)
 
     clips = np.array(clips)     # [N_segments, 6]
+    clips = clips.reshape(-1, 6)
     return clips
 
 
@@ -170,6 +174,6 @@ if __name__ == '__main__':
     image_dir = "../data/images/"
     image_feats_lookup = process_images(image_dir, model, device)
 
-    for split in ["train", "valid", "test"]:
+    for split in ["valid", "test", "train"]:
         process(f"../data/{split}_sections.pickle",
                 image_feats_lookup, model, device, split)
