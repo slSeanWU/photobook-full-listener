@@ -14,7 +14,7 @@ python
 >>> nltk.download('punkt')
 ```
 
-* get logs.zip and images.zip at [photobook_dataset](https://github.com/dmg-photobook/photobook_dataset/)
+* get logs.zip and images.zip at [photobook_dataset](https://github.com/dmg-photobook/photobook_dataset/) and save at `data/`
 
 ## Preprocess
 
