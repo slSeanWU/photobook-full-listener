@@ -19,7 +19,7 @@ class roundataset(Dataset):
         sections = pd.read_pickle(picklefile)
         for gameid, game in sections:
             for rounddict in game:
-                print (rounddict.keys())
+#                print (rounddict.keys())
                 self.examples.append(self.round2dict(
                     rounddict['round_data'], tokenizer, 'A', gameid,
                     rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set']))
@@ -30,10 +30,6 @@ class roundataset(Dataset):
     def round2dict(self, gameround, tokenizer, player, gameid, roundnr, clip_scores, image_paths):
         input_ids = []
         labels = []
-        image_feats = []
-        for img in image_paths:
-            image_feats.append(self.image_feats_dict[img])
-        image_feats = torch.stack(image_feats)      # (6, 512, 16, 16)
 
         images = [x for i, x in enumerate(
             gameround.images[player]) if gameround.highlighted[player][i]]
@@ -70,13 +66,19 @@ class roundataset(Dataset):
         for turnnum, turn in enumerate(labels):
             labels[turnnum] = list(np.transpose(np.array(turn)))
         labels = list(itertools.chain(*labels))
-        ret = {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids, 'labels': labels, 'clip_scores': clip_scores, 'image_feats': image_feats}
+        ret = {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids, 'labels': labels, 'clip_scores': clip_scores, 'image_paths': image_paths}
         return ret
 
     def __len__(self):
         return len(self.examples)
 
     def __getitem__(self, idx):
+        image_feats = []
+        for img in self.examples[idx]['image_paths']:
+            image_feats.append(self.image_feats_dict[img])
+        image_feats = torch.stack(image_feats)      # (6, 512, 16, 16)
+        self.examples[idx]['image_feats'] = image_feats
+
         return self.examples[idx]
 
 
