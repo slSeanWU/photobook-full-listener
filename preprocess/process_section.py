@@ -3,11 +3,12 @@ import os
 import glob
 import numpy as np
 from clipscore import get_clip_mdl, extract_all_images, get_clip_score
- 
+
 
 def read_pickle(filename):
     x = pickle.load(open(filename, 'rb'))
     return x
+
 
 def process_images(image_dir, model, device):
     image_paths = glob.glob(f'{image_dir}/*/*.jpg')
@@ -15,8 +16,9 @@ def process_images(image_dir, model, device):
     # a dictionary
     image_feats_lookup = extract_all_images(
         image_paths, model, device, batch_size=64, num_workers=8)
-    
+
     return image_feats_lookup
+
 
 def calc_clip(segments, image_set, image_feats_lookup, model, device):
     # image features of shape (6, 512)
@@ -41,6 +43,7 @@ def calc_clip(segments, image_set, image_feats_lookup, model, device):
     clips = np.array(clips)     # [N_segments, 6]
     return clips
 
+
 def mark_labeling_actions(self_spk_id, sec_utt_and_act, img_idx_dict):
     """ Added by Shih-Lun
     """
@@ -59,10 +62,10 @@ def mark_labeling_actions(self_spk_id, sec_utt_and_act, img_idx_dict):
             if act_spk_id == self_spk_id:
                 sec_labeling_acts.append(
                     (utt_cnt, com_or_dif, img_idx_dict[label_img_id])
-                ) 
+                )
                 # tuple format --
                 # (
-                #   num of utts before this action, 
+                #   num of utts before this action,
                 #   "<com> or "<dif>",
                 #   idx of image being labeled (possible values: 0, 1, 2, 3, 4, 5)
                 # )
@@ -70,9 +73,10 @@ def mark_labeling_actions(self_spk_id, sec_utt_and_act, img_idx_dict):
                 labeled_imgs.add(label_img_id)
 
     # print (sec_labeling_acts)
-    assert len(sec_labeling_acts) == 3 # photobook game setting
+    assert len(sec_labeling_acts) == 3  # photobook game setting
 
     return sec_labeling_acts, labeled_imgs
+
 
 def mark_spk(segments, self):
     for i in range(len(segments)):
@@ -84,12 +88,13 @@ def mark_spk(segments, self):
 
     return segments
 
+
 def process_section(sections, image_feats_lookup, model, device):
     """
     1 INPUT section
         segments: list of (spk_id, sentence) -> no modification
         image_set: {spk_A: [...], spk_B: [...]}
-    
+
     2 MODIFIED sections
         segments: [(spk_id, sentence), ...]
         label_actions: [
@@ -104,18 +109,21 @@ def process_section(sections, image_feats_lookup, model, device):
     """
     ret = []
     for sec in sections:
-        # print (sec["other"])
-        
-        assert sum([len(sec["other"][i][0]) for i in range(len(sec["other"]))]) == len(sec["segments"])
+        # print (sec["targets"])
+
+        assert sum([len(sec["targets"][i][0])
+                   for i in range(len(sec["targets"]))]) == len(sec["segments"])
         for spk in sec["image_set"]:
             assert isinstance(sec["image_set"][spk], list)
-            img_idx_dict = {img : i for i, img in enumerate(sec["image_set"][spk])}
+            img_idx_dict = {img: i for i,
+                            img in enumerate(sec["image_set"][spk])}
             new_sec = dict()
             new_sec["agent_id"] = spk
             new_sec["segments"] = mark_spk(sec["segments"], spk)[:]
             new_sec["image_set"] = sec["image_set"][spk]
             """
-            new_sec["label_actions"], highlighted_imgs = mark_labeling_actions(spk, sec["other"], img_idx_dict)
+            new_sec["label_actions"], highlighted_imgs =
+            mark_labeling_actions(spk, sec["targets"], img_idx_dict)
 
             # NOTE (Shih-Lun): added to conform to model inputs, 
             #                  e.g., [0, 1, 0, 2, 0, 3] if 2nd, 4th, 6th imgs are highlighted
@@ -134,6 +142,7 @@ def process_section(sections, image_feats_lookup, model, device):
             ret.append(new_sec)
     return ret
 
+
 def process(filename, image_feats_lookup, model, device, split):
     # read pickle
     game_sections = read_pickle(filename)
@@ -145,8 +154,9 @@ def process(filename, image_feats_lookup, model, device, split):
     for gid, sections in game_sections:
         # each game has N rounds, N = len(sections)
         print('-'*50, "game id:", gid, f'[{len(sections)} rounds]', '-'*50)
-        res.append((gid, process_section(sections, image_feats_lookup, model, device)))
-    
+        res.append((gid, process_section(
+            sections, image_feats_lookup, model, device)))
+
     # write to file
     with open(os.path.join(data_dir, f"{split}_clean_sections.pickle"), 'wb') as f:
         pickle.dump(res, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -159,4 +169,5 @@ if __name__ == '__main__':
 
     # for split in ["train", "valid", "test"]:
     for split in ["test"]:
-        process(f"../data/{split}_sections.pickle", image_feats_lookup, model, device, split)
+        process(f"../data/{split}_sections.pickle",
+                image_feats_lookup, model, device, split)

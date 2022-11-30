@@ -14,6 +14,7 @@ sys.path.insert(0, dirname(dirname(abspath(__file__))))
 
 
 round_counter = 0
+corrupt_counter = 0
 
 
 # Log Loader # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -231,10 +232,12 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
         global round_counter
         round_counter += 1
 
+        round_data.messages = messages
+
         # NOTE: a dictionary per round
-        sections = {'segments': [], 'image_set': dict(), 'targets': [],
-                    'roundnr': round_data.round_nr, 'gameid': game.game_id,
-                    'rounddata': round_data}
+        sections = {'gameid': game.game_id, 'roundnr': round_data.round_nr,
+                    'segments': [], 'image_set': dict(), 'targets': [],
+                    'round_data': round_data}
 
         i = 0
         while i < len(messages):
@@ -263,9 +266,15 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
             print("{} dialogue sections encountered in round".format(
                 len(sections['targets'])))
 
-        assert sum([len(sections['targets'][i][1]) for i in range(len(sections['targets']))]) == 6, \
-            sum([len(sections['targets'][i][1])
-                for i in range(len(sections['targets']))])
+        # There are some corrupt data
+        total_targets = sum([len(sections['targets'][i][1])
+                            for i in range(len(sections['targets']))])
+        if total_targets != 6:
+            if seg_verbose:
+                print(
+                    f'Game {sections["gameid"]} Round {sections["roundnr"]} total targets={total_targets}')
+            global corrupt_counter
+            corrupt_counter += 1
 
         section_counter += len(sections['targets'])
 
@@ -331,9 +340,13 @@ if __name__ == '__main__':
         dialogue_sections = dialogue_segmentation(
             logs, set_ids, seg_verbose=False)
         with open(os.path.join(data_path, "{}_sections.pickle".format(set_name)), 'wb') as f:
+            pickle.dump(dialogue_sections, f,
+                        protocol=pickle.HIGHEST_PROTOCOL)
             pickle.dump(dialogue_sections, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     print(
         f"Got {round_counter} out of {5 * len(logs)} rounds without mistake (total_score == 6)")
+    print(
+        f"Got {corrupt_counter} rounds with targets != 6")
 
     print("Done.")
