@@ -139,7 +139,7 @@ def process_section(sections, image_feats_lookup, model, device):
             # print (new_sec["label_actions"])
             print (new_sec["image_pred_ids"], '\n')
 
-            # new_sec["clip_scores"] = calc_clip(sec["segments"], sec["image_set"][spk], image_feats_lookup, model, device)
+            new_sec["clip_scores"] = calc_clip(sec["segments"], sec["image_set"][spk], image_feats_lookup, model, device)
 
             ret.append(new_sec)
 
@@ -167,10 +167,9 @@ def process(filename, image_feats_lookup, model, device, split):
 
 if __name__ == '__main__':
     model, device = get_clip_mdl()
-    image_dir = "../images/"
+    image_dir = "../data/images/"
     image_feats_lookup = process_images(image_dir, model, device)
 
-    # for split in ["train", "valid", "test"]:
-    for split in ["test"]:
+    for split in ["train", "valid", "test"]:
         process(f"../data/{split}_sections.pickle",
                 image_feats_lookup, model, device, split)

@@ -44,38 +44,6 @@ def load_logs(log_repository, data_path):
     return logs
 
 
-# Dataset Splitter # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-
-def generate_game_sets(sample_size, domain_dict, remaining_total):
-    """
-    Generates a data set of the given sample size by allocating games relative to their domain's frequencies.
-    :param sample_size: int. Number of games to be allocated to the set
-    :param domain_dict: dict. Dictionary linking domain IDs and the IDs of all games in that domain
-    :param remaining_total: Total number of games remaining in the domain_dict.
-    :return: [list, dict, int]. List of game_ids, updated domain_dict and total number of games remaining in the domain_dict
-    """
-    game_set = []
-    sampled_games = 0
-
-    for domain_id, games in domain_dict.items():
-        domain_sample_size = int(
-            len(games) / remaining_total * sample_size + 0.5)
-        sampled_games += domain_sample_size
-        game_set.extend([(domain_id, game_id)
-                        for game_id in rd.sample(games, domain_sample_size)])
-
-    for domain_id, game_id in game_set:
-        games = domain_dict[domain_id]
-        games.remove(game_id)
-        domain_dict[domain_id] = games
-
-    game_list = [tup[1] for tup in game_set]
-    remaining_total = remaining_total - sampled_games
-
-    return game_list, domain_dict, remaining_total
-
-
 # Dialogue Segmentation Heuristics # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 
@@ -315,51 +283,15 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-data_path", type=str, default="../data")
-    parser.add_argument("-new_split", type=bool, default=False)
-    parser.add_argument("-split", type=list, default=[15, 15])
 
     args = parser.parse_args()
     data_path = args.data_path
-    new_split = args.new_split
-    split = list(args.split)
-    if len(split) != 2:
-        print("Alert: -split argument takes a list of length 2 with validation and test size in %. Using default 15/15/70 split.")
-        split = [15, 15]
 
     logs_dir = "logs/"
     logs = load_logs(logs_dir, data_path)
 
-    # Create a new split
-    if new_split:
-        val_size = int(split[0]/100 * len(logs))
-        test_size = int(split[1]/100 * len(logs))
-
-        domain_dict = defaultdict(lambda: [])
-        for game in logs:
-            domain_dict[game.domain_id].append(game.game_id)
-
-        data_split = dict()
-        remaining_total = len(logs)
-        data_split["dev"], domain_dict, remaining_total = generate_game_sets(
-            60, domain_dict, remaining_total)
-        data_split["val"], domain_dict, remaining_total = generate_game_sets(
-            val_size, domain_dict, remaining_total)
-        data_split["test"], domain_dict, remaining_total = generate_game_sets(
-            val_size, domain_dict, remaining_total)
-
-        train_set = []
-        for domain_id, games in domain_dict.items():
-            train_set.extend(games)
-
-        data_split["train"] = train_set
-
-        with open(os.path.join(data_path, "new_data_splits.json"), 'w') as f:
-            json.dump(data_split, f)
-
-    # Load a pre-defined split
-    else:
-        with open(os.path.join(data_path, "data_splits.json"), 'r') as f:
-            data_split = json.load(f)
+    with open(os.path.join(data_path, "data_splits.json"), 'r') as f:
+        data_split = json.load(f)
 
     # print("Development set contains {} games".format(len(data_split["dev"])))
     print("Validation set contains {} games".format(len(data_split["valid"])))

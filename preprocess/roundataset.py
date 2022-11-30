@@ -1,5 +1,6 @@
 import itertools
-
+import pickle
+import torch
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
@@ -9,8 +10,11 @@ from print_round import print_round
 
 
 class roundataset(Dataset):
-    def __init__(self, picklefile):
+    def __init__(self, picklefile, image_feats_path, image_dir='../data/images'):
         self.examples = []
+        self.image_dir = image_dir
+        self.image_feats_dict = pickle.load(open(image_feats_path, 'rb'))    # path to image features
+
         tokenizer = DebertaTokenizer.from_pretrained("microsoft/deberta-base")
         sections = pd.read_pickle(picklefile)
         for gameid, game in sections:
@@ -18,14 +22,18 @@ class roundataset(Dataset):
                 print (rounddict.keys())
                 self.examples.append(self.round2dict(
                     rounddict['round_data'], tokenizer, 'A', gameid,
-                    rounddict['roundnr']))
+                    rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set']))
                 self.examples.append(self.round2dict(
                     rounddict['round_data'], tokenizer, 'B', gameid,
-                    rounddict['roundnr']))
+                    rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set']))
 
-    def round2dict(self, gameround, tokenizer, player, gameid, roundnr):
+    def round2dict(self, gameround, tokenizer, player, gameid, roundnr, clip_scores, image_paths):
         input_ids = []
         labels = []
+        image_feats = []
+        for img in image_paths:
+            image_feats.append(self.image_feats_dict[img])
+        image_feats = torch.stack(image_feats)      # (6, 512, 16, 16)
 
         images = [x for i, x in enumerate(
             gameround.images[player]) if gameround.highlighted[player][i]]
@@ -62,8 +70,8 @@ class roundataset(Dataset):
         for turnnum, turn in enumerate(labels):
             labels[turnnum] = list(np.transpose(np.array(turn)))
         labels = list(itertools.chain(*labels))
-
-        return {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids, 'labels': labels}
+        ret = {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids, 'labels': labels, 'clip_scores': clip_scores, 'image_feats': image_feats}
+        return ret
 
     def __len__(self):
         return len(self.examples)
@@ -73,5 +81,7 @@ class roundataset(Dataset):
 
 
 if __name__ == '__main__':
-    dset = roundataset('../data/test_sections.pickle')
+    split = 'valid'
+    image_feats_dict = '../data/image_feats.pickle'
+    dset = roundataset(f'../data/{split}_clean_sections.pickle', image_feats_dict)
     print(dset)
