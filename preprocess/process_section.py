@@ -3,6 +3,7 @@ import os
 import glob
 import numpy as np
 from clipscore import get_clip_mdl, extract_all_images, get_clip_score
+import datetime
 
 
 def read_pickle(filename):
@@ -137,7 +138,7 @@ def process_section(sections, image_feats_lookup, model, device):
                     highlighted_cnt += 1
                     new_sec["image_pred_ids"][i] = highlighted_cnt
             # print (new_sec["label_actions"])
-            print (new_sec["image_pred_ids"], '\n')
+            # print (new_sec["image_pred_ids"], '\n')
 
             new_sec["clip_scores"] = calc_clip(sec["segments"], sec["image_set"][spk], image_feats_lookup, model, device)
 
@@ -157,6 +158,8 @@ def process(filename, image_feats_lookup, model, device, split):
     for gid, sections in game_sections:
         # each game has N rounds, N = len(sections)
         print('-'*50, "game id:", gid, f'[{len(sections)} rounds]', '-'*50)
+        print (datetime.datetime.now())
+
         res.append((gid, process_section(
             sections, image_feats_lookup, model, device)))
 
