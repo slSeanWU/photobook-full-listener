@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 from transformers import DebertaTokenizer
+from random import sample
 
 import copy
 
@@ -15,13 +16,14 @@ class roundataset(Dataset):
     def __init__(self, picklefile, image_feats_path, image_dir='../data/images'):
         self.examples = []
         self.image_dir = image_dir
-        self.image_feats_dict = pickle.load(open(image_feats_path, 'rb'))    # path to image features
+        self.image_feats_dict = pickle.load(
+            open(image_feats_path, 'rb'))    # path to image features
+        self.maxseqlen = 460
 
         tokenizer = DebertaTokenizer.from_pretrained("microsoft/deberta-base")
         sections = pd.read_pickle(picklefile)
         for gameid, game in sections:
             for rounddict in game:
-                print (rounddict.keys())
                 self.examples.append(self.round2dict(
                     rounddict['round_data'], tokenizer, 'A', gameid,
                     rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set']))
@@ -51,7 +53,8 @@ class roundataset(Dataset):
                     'input_ids']
 
                 # NOTE (Shih-Lun): to strip automatically added [CLS] and [SEP], add <eos> at the end
-                tokenized_msg = tokenized_msg[1:-1] + [tokenizer.convert_tokens_to_ids('<|endoftext|>')]
+                tokenized_msg = tokenized_msg[1:-1] + \
+                    [tokenizer.convert_tokens_to_ids('<|endoftext|>')]
 
                 input_ids.append(tokenized_msg)
                 labels.append([x * len(tokenized_msg) for x in image_status])
@@ -76,7 +79,8 @@ class roundataset(Dataset):
             labels[turnnum] = list(np.transpose(np.array(turn)))
         labels = list(itertools.chain(*labels))
         clips = np.vstack(clips)
-        ret = {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids, 'labels': labels, 'vlscores': clips, 'image_paths': image_paths}
+        ret = {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids,
+               'labels': np.array(labels), 'vlscores': clips, 'image_paths': image_paths}
         return ret
 
     def __len__(self):
@@ -94,11 +98,26 @@ class roundataset(Dataset):
 
         del image_feats
 
+        # Pad ararys to uniform length
+        item['input_ids'] = np.pad(item['input_ids'], (0, self.maxseqlen -
+                                                       len(item['input_ids'])),
+                                   'constant', constant_values=(0,))
+        item['labels'] = np.pad(item['labels'], ((
+            0, self.maxseqlen - item['labels'].shape[0]), (0, 0)), 'constant', constant_values=(-100,))
+        item['vlscores'] = np.pad(item['vlscores'], ((
+            0, self.maxseqlen - item['vlscores'].shape[0]), (0, 0)), 'constant', constant_values=(-100,))
+
         return item
 
 
 if __name__ == '__main__':
     split = 'valid'
     image_feats_dict = '../data/image_feats.pickle'
-    dset = roundataset(f'../data/{split}_clean_sections.pickle', image_feats_dict)
-    print(dset)
+    dset = roundataset(
+        f'../data/{split}_clean_sections.pickle', image_feats_dict)
+    for i in sample(range(len(dset)), 5):
+        print(f'Example {i}')
+        print(f'input_ids shape = {dset[i]["input_ids"].shape}')
+        print(f'labels shape = {dset[i]["labels"].shape}')
+        print(f'vlscores shape = {dset[i]["vlscores"].shape}')
+        print('')
