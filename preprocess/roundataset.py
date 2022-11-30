@@ -6,6 +6,8 @@ import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 from transformers import DebertaTokenizer
 
+import copy
+
 from print_round import print_round
 
 
@@ -47,6 +49,10 @@ class roundataset(Dataset):
                     msgtxt = '[SEP] ' + msgtxt
                 tokenized_msg = tokenizer(msgtxt, padding=False, truncation=True)[
                     'input_ids']
+
+                # NOTE (Shih-Lun): to strip automatically added [CLS] and [SEP], add <eos> at the end
+                tokenized_msg = tokenized_msg[1:-1] + [tokenizer.convert_tokens_to_ids('<|endoftext|>')]
+
                 input_ids.append(tokenized_msg)
                 labels.append([x * len(tokenized_msg) for x in image_status])
                 clips.append(np.tile(clip_scores[c], (len(tokenized_msg), 1)))
@@ -84,7 +90,9 @@ class roundataset(Dataset):
         image_feats = torch.stack(image_feats).numpy()     # (6, 512, 16, 16)
 
         item = self.examples[idx]
-        item["visual_inputs"] = image_feats
+        item["visual_inputs"] = copy.deepcopy(image_feats)
+
+        del image_feats
 
         return item
 
