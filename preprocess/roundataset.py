@@ -19,7 +19,7 @@ class roundataset(Dataset):
         sections = pd.read_pickle(picklefile)
         for gameid, game in sections:
             for rounddict in game:
-#                print (rounddict.keys())
+                print (rounddict.keys())
                 self.examples.append(self.round2dict(
                     rounddict['round_data'], tokenizer, 'A', gameid,
                     rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set']))
@@ -30,12 +30,13 @@ class roundataset(Dataset):
     def round2dict(self, gameround, tokenizer, player, gameid, roundnr, clip_scores, image_paths):
         input_ids = []
         labels = []
+        clips = []
+        c = 0
 
         images = [x for i, x in enumerate(
             gameround.images[player]) if gameround.highlighted[player][i]]
         # 0 = undecided, 1 = common, 2 = different
         image_status = [[0] for _ in images]
-
         for i, m in enumerate(gameround.messages):
             if m.type == "text":
                 msgtxt = m.text
@@ -48,6 +49,8 @@ class roundataset(Dataset):
                     'input_ids']
                 input_ids.append(tokenized_msg)
                 labels.append([x * len(tokenized_msg) for x in image_status])
+                clips.append(np.tile(clip_scores[c], (len(tokenized_msg), 1)))
+                c += 1
 
             if m.type == "selection" and m.speaker == player:
                 img = m.text.split()[2]
@@ -66,7 +69,8 @@ class roundataset(Dataset):
         for turnnum, turn in enumerate(labels):
             labels[turnnum] = list(np.transpose(np.array(turn)))
         labels = list(itertools.chain(*labels))
-        ret = {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids, 'labels': labels, 'clip_scores': clip_scores, 'image_paths': image_paths}
+        clips = np.vstack(clips)
+        ret = {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids, 'labels': labels, 'vlscores': clips, 'image_paths': image_paths}
         return ret
 
     def __len__(self):

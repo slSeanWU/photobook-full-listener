@@ -132,3 +132,6 @@ class Message:
             return "text"
         else:
             return re.findall(r'<(.*?)>', self.text)[0]
+
+    def __repr__(self):
+        return f"{self.agent_id}: {self.text}"
