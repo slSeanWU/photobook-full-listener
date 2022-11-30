@@ -240,21 +240,45 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
                     'round_data': round_data}
 
         i = 0
+        label_before_all_chats = False
+        n_selection = 0
+        preceeding_labelings = []
         while i < len(messages):
             message = messages[i]
             current_section = []
             current_targets = []
             if message.type == 'text':
                 current_section.append(message)
-                i += 1
-                while messages[i].type == 'selection':
-                    current_targets.append(get_target(messages[i]))
-                    i += 1
-                i -= 1
+                # i += 1
+                # while messages[i].type == 'selection':
+                #     current_targets.append(get_target(messages[i]))
+                #     i += 1
+                # i -= 1
                 sections['segments'] += parse(current_section)
                 sections['targets'].append(
                     (current_section[0], set(current_targets)))
+
+                if len(preceeding_labelings):
+                    preceeding_labelings = []
+
+            elif message.type == "selection":
+                n_selection += 1
+
+                try:
+                    sections['targets'][-1][1].add(
+                        get_target(message)
+                    )
+                except:
+                    print ("found labeling action before all chats, skip sample")
+                    label_before_all_chats = True
+                    break
+
             i += 1
+
+
+        if label_before_all_chats:
+            round_counter -= 1
+            continue
 
         # NOTE: separate image set of 2 players
         sections['image_set'] = {
@@ -266,7 +290,6 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
             print("{} dialogue sections encountered in round".format(
                 len(sections['targets'])))
 
-        # There are some corrupt data
         total_targets = sum([len(sections['targets'][i][1])
                             for i in range(len(sections['targets']))])
         if total_targets != 6:
@@ -275,8 +298,16 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
                     f'Game {sections["gameid"]} Round {sections["roundnr"]} total targets={total_targets}')
             global corrupt_counter
             corrupt_counter += 1
+        
+        assert corrupt_counter == 0
 
         section_counter += len(sections['targets'])
+
+        for s in range(len(sections["targets"])):
+            print (sections["targets"][s][0])
+            print (sections["targets"][s][1], "\n")
+
+        print ("+" * 50)
 
     return game_sections, cleaning_total, section_counter
 
@@ -330,12 +361,12 @@ if __name__ == '__main__':
         with open(os.path.join(data_path, "data_splits.json"), 'r') as f:
             data_split = json.load(f)
 
-    print("Development set contains {} games".format(len(data_split["dev"])))
-    print("Validation set contains {} games".format(len(data_split["val"])))
+    # print("Development set contains {} games".format(len(data_split["dev"])))
+    print("Validation set contains {} games".format(len(data_split["valid"])))
     print("Test set contains {} games".format(len(data_split["test"])))
     print("Train set contains {} games".format(len(data_split["train"])))
 
-    for set_name in ['dev', 'val', 'test', 'train']:
+    for set_name in ['valid', 'test', 'train']:
         set_ids = data_split[set_name]
         dialogue_sections = dialogue_segmentation(
             logs, set_ids, seg_verbose=False)
