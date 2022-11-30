@@ -76,10 +76,13 @@ class roundataset(Dataset):
         image_feats = []
         for img in self.examples[idx]['image_paths']:
             image_feats.append(self.image_feats_dict[img])
-        image_feats = torch.stack(image_feats)      # (6, 512, 16, 16)
-        self.examples[idx]['image_feats'] = image_feats
 
-        return self.examples[idx]
+        image_feats = torch.stack(image_feats).numpy()     # (6, 512, 16, 16)
+
+        item = self.examples[idx]
+        item["visual_inputs"] = image_feats
+
+        return item
 
 
 if __name__ == '__main__':
