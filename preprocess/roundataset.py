@@ -15,6 +15,7 @@ class roundataset(Dataset):
         sections = pd.read_pickle(picklefile)
         for gameid, game in sections:
             for rounddict in game:
+                print (rounddict.keys())
                 self.examples.append(self.round2dict(
                     rounddict['round_data'], tokenizer, 'A', gameid,
                     rounddict['roundnr']))

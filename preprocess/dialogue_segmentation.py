@@ -303,11 +303,11 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
 
         section_counter += len(sections['targets'])
 
-        for s in range(len(sections["targets"])):
-            print (sections["targets"][s][0])
-            print (sections["targets"][s][1], "\n")
+        # for s in range(len(sections["targets"])):
+        #     print (sections["targets"][s][0])
+        #     print (sections["targets"][s][1], "\n")
 
-        print ("+" * 50)
+        # print ("+" * 50)
 
     return game_sections, cleaning_total, section_counter
 

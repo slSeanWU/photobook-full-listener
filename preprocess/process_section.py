@@ -52,14 +52,14 @@ def mark_labeling_actions(self_spk_id, sec_utt_and_act, img_idx_dict):
     sec_labeling_acts = []
     for subsec in sec_utt_and_act:
         subsec_utts, subsec_acts = subsec
-        utt_cnt += len(subsec_utts)
+        utt_cnt += 1
         for label_act in subsec_acts:
             assert isinstance(label_act, tuple) and len(label_act) == 3
             act_spk_id, com_or_dif, label_img_id = label_act
-            assert label_img_id in img_idx_dict
 
             # answer from the player itself, add to labeling actions
             if act_spk_id == self_spk_id:
+                assert label_img_id in img_idx_dict
                 sec_labeling_acts.append(
                     (utt_cnt, com_or_dif, img_idx_dict[label_img_id])
                 )
@@ -111,19 +111,22 @@ def process_section(sections, image_feats_lookup, model, device):
     for sec in sections:
         # print (sec["targets"])
 
-        assert sum([len(sec["targets"][i][0])
-                   for i in range(len(sec["targets"]))]) == len(sec["segments"])
+        assert len(sec["targets"]) == len(sec["segments"])
+
         for spk in sec["image_set"]:
             assert isinstance(sec["image_set"][spk], list)
             img_idx_dict = {img: i for i,
                             img in enumerate(sec["image_set"][spk])}
             new_sec = dict()
+
+            new_sec["round_data"] = sec["round_data"]
+            new_sec["roundnr"] = sec["roundnr"]
             new_sec["agent_id"] = spk
             new_sec["segments"] = mark_spk(sec["segments"], spk)[:]
             new_sec["image_set"] = sec["image_set"][spk]
-            """
-            new_sec["label_actions"], highlighted_imgs =
-            mark_labeling_actions(spk, sec["targets"], img_idx_dict)
+
+            new_sec["label_actions"], highlighted_imgs = \
+                mark_labeling_actions(spk, sec["targets"], img_idx_dict)
 
             # NOTE (Shih-Lun): added to conform to model inputs, 
             #                  e.g., [0, 1, 0, 2, 0, 3] if 2nd, 4th, 6th imgs are highlighted
@@ -133,13 +136,13 @@ def process_section(sections, image_feats_lookup, model, device):
                 if img in highlighted_imgs:
                     highlighted_cnt += 1
                     new_sec["image_pred_ids"][i] = highlighted_cnt
-            """
             # print (new_sec["label_actions"])
-            # print (new_sec["image_pred_ids"], '\n')
+            print (new_sec["image_pred_ids"], '\n')
 
             # new_sec["clip_scores"] = calc_clip(sec["segments"], sec["image_set"][spk], image_feats_lookup, model, device)
 
             ret.append(new_sec)
+
     return ret
 
 
@@ -164,7 +167,7 @@ def process(filename, image_feats_lookup, model, device, split):
 
 if __name__ == '__main__':
     model, device = get_clip_mdl()
-    image_dir = "../data/images/"
+    image_dir = "../images/"
     image_feats_lookup = process_images(image_dir, model, device)
 
     # for split in ["train", "valid", "test"]:
