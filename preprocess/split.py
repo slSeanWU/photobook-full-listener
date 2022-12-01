@@ -14,7 +14,15 @@ def process(logfile):
     cls = imgfile.split('/')[0]
 
     return cls
-    
+
+def info(mapping):
+    total = 0
+    for k, v in mapping.items():
+        print(k, len(v))
+        total += len(v)
+    print('total:', total)
+    return
+
 if __name__ == '__main__':
     mapping = dict()    # key: category, value: img_domain_id
 
@@ -29,7 +37,7 @@ if __name__ == '__main__':
             mapping[cls] = []
         mapping[cls].append(int(gid))
 
-
+    info(mapping)
     # split to 70:10:20
     '''
     [TEST]
@@ -40,8 +48,16 @@ if __name__ == '__main__':
     cup_dining_table 86
     bus_truck 90
     --> total: 499
+
+    [VALID]
+    couch_dining_table 87
+    person_motorcycle 96
+    person_boat 60
+    --> total: 243
     '''
+
     test_cls = {'person_refrigerator', 'chair_couch', 'car_motorcycle', 'cake_dining_table', 'cup_dining_table', 'bus_truck'}
+    valid_cls = {'couch_dining_table', 'person_motorcycle', 'person_boat'}
 
     data_split = {'train': [], 'valid': [], 'test': []}
 
@@ -49,14 +65,10 @@ if __name__ == '__main__':
     for key, val in mapping.items():
         if key in test_cls:
             data_split['test'] += val
+        elif key in valid_cls:
+            data_split['valid'] += val
         else:
-            train_val += val
-
-    random.shuffle(train_val)
-    val_cnt = int(len(train_val)*0.13)
-    data_split['valid'] = train_val[:val_cnt]
-    data_split['train'] = train_val[val_cnt:]
-
+            data_split['train'] += val
 
     with open("../data/data_splits.json", 'w') as f:
         json.dump(data_split, f)
