@@ -38,6 +38,7 @@ def process_images(model, feat_extractor, image_dir):
         pickle.dump(image_feats, f, protocol=pickle.HIGHEST_PROTOCOL)
     return
 
+
 if __name__ == '__main__':
     # model
     model_type = "nvidia/segformer-b4-finetuned-ade-512-512"
@@ -45,7 +46,7 @@ if __name__ == '__main__':
     model = SegformerModel.from_pretrained(model_type)
 
     # image
-    img_dir = "../../images"
+    img_dir = "../images"
 
     # process
     process_images(model, feature_extractor, img_dir)
