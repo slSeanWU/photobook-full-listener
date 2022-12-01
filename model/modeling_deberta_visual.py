@@ -73,7 +73,7 @@ class VisualCrossAttentionLayer(nn.Module):
         hidden_states = self.act_fn(self.fc1(hidden_states))
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.fc2(hidden_states)
-        hidden_states = self.final_LayerNorm(hidden_size + residual)
+        hidden_states = self.final_LayerNorm(hidden_states + residual)
 
         if output_attentions:
             return (hidden_states, attn_weights)
@@ -130,17 +130,17 @@ class DebertaWithVisualEmbeddings(nn.Module):
         self.register_buffer(
                 "img_H_pos_ids", 
                 torch.arange(img_patches_per_side).view((-1, 1)) \
-                                                  .expand((1, 1, -1, img_patches_per_side))
+                                                  .expand((1, 1, -1, img_patches_per_side)).clone()
             )
         self.register_buffer(
                 "img_W_pos_ids", 
                 torch.arange(img_patches_per_side).view((1, -1)) \
-                                                  .expand((1, 1, img_patches_per_side, -1))
+                                                  .expand((1, 1, img_patches_per_side, -1)).clone()
             )
         self.register_buffer(
                 "img_ids", 
                 torch.arange(config.n_ctx_img).view(-1, 1, 1) \
-                                              .expand((1, -1, img_patches_per_side, img_patches_per_side))
+                                              .expand((1, -1, img_patches_per_side, img_patches_per_side)).clone()
             )
 
         self.visual_embed_proj = nn.Linear(config.visual_hidden_size, config.hidden_size)
@@ -288,7 +288,6 @@ class DebertaWithVisualEncoder(nn.Module):
         self.visual_insert_layers = config.visual_insert_layers
         self.vlscore_insert_layers = set(config.vlscore_insert_layers)
         self.vlscore_dropout = StableDropout(config.hidden_dropout_prob)
-        
         # NOTE (Shih-Lun): construct visual network parts
         if not self.tie_visual_layers:
             self.vis_layer = nn.ModuleList([
@@ -437,7 +436,7 @@ class DebertaWithVisualEncoder(nn.Module):
 
             # NOTE(Shih-Lun): fuse vlscore (e.g., clipscore) in the middle
             if i in self.vlscore_insert_layers:
-                print ("vlscore added after layer #", i)
+                # print ("vlscore added after layer #", i)
                 next_kv += self.vlscore_dropout(vlscore_states)
 
             # NOTE(Shih-Lun) visual cross attention
@@ -546,7 +545,8 @@ class DebertaWithVisualModel(DebertaPreTrainedModel):
                 attention_mask = torch.ones(input_shape, device=device)
             else:
                 attention_mask = _make_causal_mask(input_shape, visual_inputs.dtype, 0) \
-                                    .to(device)
+                                    .to(device).to(torch.bool)
+                attention_mask = ~attention_mask
 
         if token_type_ids is None:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
@@ -684,7 +684,7 @@ class DebertaForPhotobookListener(DebertaPreTrainedModel):
         logits = self.dropout(logits)
         logits = self.fc2(logits)
 
-        print (f"[in Listener.forward()] clf_input: {clf_input.size()}, logits: {logits.size()}, labels: {labels.size()}")
+        # print (f"[in Listener.forward()] clf_input: {clf_input.size()}, logits: {logits.size()}, labels: {labels.size()}")
 
         loss = None
         if labels is not None:
@@ -725,7 +725,7 @@ if __name__ == "__main__":
                         config_json
                     )
                 )
-    bs, seqlen, hidden_size = 4, 100, 768
+    bs, seqlen, hidden_size, visual_hidden_size = 4, 100, 768, 512
     n_ctx_img, patchsize = 6, 16
     input_ids = torch.randint(0, 10, (bs, seqlen))
     token_type_ids = torch.randint(0, 1, (bs, seqlen)) # used to distinguish a token is from self (id = 0) or partner (id = 1)
@@ -735,7 +735,7 @@ if __name__ == "__main__":
                         [0, 0, 0, 1, 2, 3],
                         [1, 2, 3, 0, 0, 0],
                     ])
-    visual_inputs = torch.randn(bs, n_ctx_img, hidden_size, patchsize, patchsize)
+    visual_inputs = torch.randn(bs, n_ctx_img, visual_hidden_size, patchsize, patchsize)
     vlscores = torch.randn(bs, seqlen, n_ctx_img)
 
     emb_outs = emb_module(

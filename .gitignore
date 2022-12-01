@@ -133,3 +133,6 @@ dmypy.json
 **/images/*
 **/*.tmp
 **/*.pickle
+**/*.out
+**/run_*.sh
+**/exp*/

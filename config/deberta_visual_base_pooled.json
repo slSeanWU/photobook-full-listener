@@ -22,7 +22,7 @@
   "num_visual_layers": 2,
 	"tie_visual_layers": false,
 	"use_pooled_vis_feat": true,
-	"use_patch_vis_feat": true,
+	"use_patch_vis_feat": false,
   "visual_hidden_size": 512,
   "visual_insert_layers": [9, 9],
   "vlscore_insert_layers": [9, 10],

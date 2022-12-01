@@ -25,7 +25,7 @@
 	"use_patch_vis_feat": true,
   "visual_hidden_size": 512,
   "visual_insert_layers": [9, 9],
-  "vlscore_insert_layers": [9, 10],
+  "vlscore_insert_layers": [],
 	"do_causal_self_attn": true,
 	"num_labels": 3
 }

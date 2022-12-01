@@ -9,8 +9,6 @@ from random import sample
 
 import copy
 
-from print_round import print_round
-
 
 class roundataset(Dataset):
     def __init__(self, picklefile, image_feats_path, image_dir='../data/images'):
@@ -22,6 +20,8 @@ class roundataset(Dataset):
 
         tokenizer = DebertaTokenizer.from_pretrained("microsoft/deberta-base")
         sections = pd.read_pickle(picklefile)
+
+        # sections = sections[:10]
 
         for gameid, game in sections:
             for rounddict in game:
@@ -99,13 +99,9 @@ class roundataset(Dataset):
         for img in self.examples[idx]['image_paths']:
             image_feats.append(self.image_feats_dict[img])
 
-        image_feats = torch.stack(image_feats).numpy()     # (6, 512, 16, 16)
+        image_feats = torch.stack(image_feats).float()    # (6, 512, 16, 16)
 
         item = self.examples[idx]
-        item["visual_inputs"] = copy.deepcopy(image_feats)
-
-        image_feats = None
-        del image_feats
 
         # Pad ararys to uniform length
         if len(item['input_ids']) < self.maxseqlen:
@@ -122,17 +118,28 @@ class roundataset(Dataset):
             item['labels'] = item['labels'][:self.maxseqlen, :]
             item['vlscores'] = item['vlscores'][:self.maxseqlen, :]
 
-        return item
+        if isinstance(item['input_ids'], np.ndarray):
+            item['img_pred_ids'] = torch.LongTensor(item['img_pred_ids'])
+            item['input_ids'] = torch.LongTensor(item['input_ids'])
+            item['labels'] = torch.LongTensor(item['labels'])
+            item['vlscores'] = torch.tensor(item['vlscores']).float()
+
+        _ret_item = copy.deepcopy(item)
+        _ret_item['visual_inputs'] = copy.deepcopy(image_feats)
+
+        del image_feats
+
+        return _ret_item
 
 
 if __name__ == '__main__':
-    split = 'train'
+    split = 'test'
     image_feats_dict = '../data/image_feats.pickle'
     dset = roundataset(
         f'../data/{split}_clean_sections.pickle', image_feats_dict)
 
     print (len(dset))
-    for i in range(len(dset)):
+    for i in range(10):
         samp = dset[i]
 
         print(f'Example {i}')
