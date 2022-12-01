@@ -22,30 +22,32 @@ class roundataset(Dataset):
 
         tokenizer = DebertaTokenizer.from_pretrained("microsoft/deberta-base")
         sections = pd.read_pickle(picklefile)
+
         for gameid, game in sections:
             for rounddict in game:
-                self.examples.append(self.round2dict(
-                    rounddict['round_data'], tokenizer, 'A', gameid,
-                    rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set']))
-                self.examples.append(self.round2dict(
-                    rounddict['round_data'], tokenizer, 'B', gameid,
-                    rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set']))
+                agent_id = rounddict['agent_id']
+                self.examples.append(
+                    self.round2dict(
+                        rounddict['round_data'], tokenizer, agent_id, gameid,
+                        rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set'], rounddict['image_pred_ids']
+                    )
+                )
 
-    def round2dict(self, gameround, tokenizer, player, gameid, roundnr, clip_scores, image_paths):
+    def round2dict(self, gameround, tokenizer, player, gameid, roundnr, clip_scores, image_paths, image_pred_ids):
         input_ids = []
         labels = []
         clips = []
         c = 0
 
-        images = [x for i, x in enumerate(
-            gameround.images[player]) if gameround.highlighted[player][i]]
+        images = [x for i, x in enumerate(image_paths) if image_pred_ids[i]]
+
         # 0 = undecided, 1 = common, 2 = different
         image_status = [[0] for _ in images]
         for i, m in enumerate(gameround.messages):
             if m.type == "text":
                 msgtxt = m.text
                 # '[CLS] for self, [SEP] for other'
-                if m.speaker == player:
+                if m.agent_id == player:
                     msgtxt = '[CLS] ' + msgtxt
                 else:
                     msgtxt = '[SEP] ' + msgtxt
@@ -61,7 +63,7 @@ class roundataset(Dataset):
                 clips.append(np.tile(clip_scores[c], (len(tokenized_msg), 1)))
                 c += 1
 
-            if m.type == "selection" and m.speaker == player:
+            if m.type == "selection" and m.agent_id == player:
                 img = m.text.split()[2]
                 img_index = images.index(img)
                 label = 1 if m.text.split()[1] == "<com>" else 2
@@ -79,8 +81,14 @@ class roundataset(Dataset):
             labels[turnnum] = list(np.transpose(np.array(turn)))
         labels = list(itertools.chain(*labels))
         clips = np.vstack(clips)
-        ret = {'gameid': gameid, 'roundnr': roundnr, 'input_ids': input_ids,
-               'labels': np.array(labels), 'vlscores': clips, 'image_paths': image_paths}
+        image_pred_ids = np.array(image_pred_ids)
+
+        ret = {
+            'gameid': gameid, 'roundnr': roundnr, 'input_ids': np.array(input_ids),
+            'labels': np.array(labels), 'vlscores': clips, 'image_paths': image_paths,
+            'img_pred_ids': image_pred_ids,
+        }
+
         return ret
 
     def __len__(self):
@@ -96,28 +104,41 @@ class roundataset(Dataset):
         item = self.examples[idx]
         item["visual_inputs"] = copy.deepcopy(image_feats)
 
+        image_feats = None
         del image_feats
 
         # Pad ararys to uniform length
-        item['input_ids'] = np.pad(item['input_ids'], (0, self.maxseqlen -
-                                                       len(item['input_ids'])),
-                                   'constant', constant_values=(0,))
-        item['labels'] = np.pad(item['labels'], ((
-            0, self.maxseqlen - item['labels'].shape[0]), (0, 0)), 'constant', constant_values=(-100,))
-        item['vlscores'] = np.pad(item['vlscores'], ((
-            0, self.maxseqlen - item['vlscores'].shape[0]), (0, 0)), 'constant', constant_values=(-100,))
+        if len(item['input_ids']) < self.maxseqlen:
+            item['input_ids'] = np.pad(item['input_ids'], (0, self.maxseqlen -
+                                                        len(item['input_ids'])),
+                                    'constant', constant_values=(0,))
+            item['labels'] = np.pad(item['labels'], ((
+                0, self.maxseqlen - item['labels'].shape[0]), (0, 0)), 'constant', constant_values=(-100,))
+            item['vlscores'] = np.pad(item['vlscores'], ((
+                0, self.maxseqlen - item['vlscores'].shape[0]), (0, 0)), 'constant', constant_values=(0.,))
+        
+        elif len(item['input_ids']) > self.maxseqlen:
+            item['input_ids'] = item['input_ids'][:self.maxseqlen]
+            item['labels'] = item['labels'][:self.maxseqlen, :]
+            item['vlscores'] = item['vlscores'][:self.maxseqlen, :]
 
         return item
 
 
 if __name__ == '__main__':
-    split = 'valid'
+    split = 'train'
     image_feats_dict = '../data/image_feats.pickle'
     dset = roundataset(
         f'../data/{split}_clean_sections.pickle', image_feats_dict)
-    for i in sample(range(len(dset)), 5):
+
+    print (len(dset))
+    for i in range(len(dset)):
+        samp = dset[i]
+
         print(f'Example {i}')
-        print(f'input_ids shape = {dset[i]["input_ids"].shape}')
-        print(f'labels shape = {dset[i]["labels"].shape}')
-        print(f'vlscores shape = {dset[i]["vlscores"].shape}')
+        print(f'img_pred_ids shape = {samp["img_pred_ids"].shape}')
+        print(f'input_ids shape = {samp["input_ids"].shape}')
+        print(f'labels shape = {samp["labels"].shape}')
+        print(f'vlscores shape = {samp["vlscores"].shape}')
+        print(f'visual_inputs shape = {samp["visual_inputs"].shape}')
         print('')
