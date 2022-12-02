@@ -5,3 +5,4 @@ pycocoevalcap
 nltk
 scikit-learn
 pandas
+evaluate
