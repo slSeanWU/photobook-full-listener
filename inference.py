@@ -1,4 +1,4 @@
-import os
+import os, pickle
 import sys
 sys.path.append("./model/")
 sys.path.append("./preprocess/")
@@ -9,15 +9,17 @@ import evaluate
 
 from preprocess.roundataset import roundataset
 from model.modeling_deberta_visual import DebertaForPhotobookListener
-from model.configuration_deberta_visual import DebertaWithVisualConfig
 from model.variables import (
     EPOCHS, CKPT_DIR,
     BATCH_SIZE, PEAK_LR, WARMUP_STEPS, WEIGHT_DECAY,
-    PRETRAINED_MODEL_NAME,
 )
 
 metric = evaluate.load("accuracy")
 ckpt_dir = sys.argv[1]
+
+res_dir = "results/"
+if not os.path.exists(res_dir):
+    os.makedirs(res_dir)
 
 def compute_metrics(eval_pairs):
     predictions, labels = eval_pairs
@@ -40,6 +42,19 @@ def compute_metrics(eval_pairs):
     results = metric.compute(predictions=true_predictions, references=true_labels)
 
     # print (results)
+    pickle.dump(
+        {
+            "labels": true_labels,
+            "preds": true_predictions
+        },
+        open(
+            os.path.join(
+                res_dir,
+                os.path.basename(ckpt_dir) + '.pkl'
+            ),
+            "wb"
+        )
+    )
 
     return results
 
@@ -83,9 +98,3 @@ if __name__ == '__main__':
 
     trainer.log_metrics("test", metrics)
     trainer.save_metrics("test", metrics)
-
-    # predictions, labels, metrics = trainer.predict(test_dset, metric_key_prefix="predict")
-    # predictions = np.argmax(predictions, axis=2)
-
-    # trainer.log_metrics("test", metrics)
-    # trainer.save_metrics("test", metrics)
