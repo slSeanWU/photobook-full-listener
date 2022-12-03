@@ -22,6 +22,7 @@ metric = evaluate.load("accuracy")
 
 config_json = sys.argv[1]
 CKPT_DIR = sys.argv[2] if len(sys.argv) > 2 else CKPT_DIR
+RND_SEED = int(sys.argv[3]) if len(sys.argv) > 3 else RND_SEED
 
 # NOTE (Shih-Lun): borrowed from 
 # https://wandb.ai/sauravmaheshkar/RSNA-MICCAI/reports/How-to-Set-Random-Seeds-in-PyTorch-and-Tensorflow--VmlldzoxMDA2MDQy
@@ -75,6 +76,11 @@ if __name__ == '__main__':
         'data/image_feats.pickle'
     )
     print ("[info] valid set loaded, len =", len(val_dset))
+    test_dset = roundataset(
+        'data/test_clean_sections.pickle',
+        'data/image_feats.pickle'
+    )
+    print ("[info] test dset loaded, len =", len(test_dset))
 
     print ("[info] using config:", config_json)
 
@@ -128,8 +134,8 @@ if __name__ == '__main__':
     trainer.log_metrics("val", metrics)
     trainer.save_metrics("val", metrics)
 
-    # predictions, labels, metrics = trainer.predict(test_dset, metric_key_prefix="predict")
-    # predictions = np.argmax(predictions, axis=2)
+    metrics = trainer.evaluate(eval_dataset=test_dset)
+    metrics["test_samples"] = len(test_dset)
 
-    # trainer.log_metrics("test", metrics)
-    # trainer.save_metrics("test", metrics)
+    trainer.log_metrics("test", metrics)
+    trainer.save_metrics("test", metrics)
