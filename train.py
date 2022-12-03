@@ -1,27 +1,41 @@
 import os
 import sys
+import random
 sys.path.append("./model/")
 sys.path.append("./preprocess/")
 
 from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
 import numpy as np
 import evaluate
+import torch
 
 from preprocess.roundataset import roundataset
 from model.modeling_deberta_visual import DebertaForPhotobookListener
 from model.configuration_deberta_visual import DebertaWithVisualConfig
 from model.variables import (
-    EPOCHS, CKPT_DIR,
+    EPOCHS, CKPT_DIR, RND_SEED,
     BATCH_SIZE, PEAK_LR, WARMUP_STEPS, WEIGHT_DECAY,
     PRETRAINED_MODEL_NAME,
 )
 
 metric = evaluate.load("accuracy")
-return_entity_level_scores = True
-label_list = None
 
 config_json = sys.argv[1]
 CKPT_DIR = sys.argv[2] if len(sys.argv) > 2 else CKPT_DIR
+
+# NOTE (Shih-Lun): borrowed from 
+# https://wandb.ai/sauravmaheshkar/RSNA-MICCAI/reports/How-to-Set-Random-Seeds-in-PyTorch-and-Tensorflow--VmlldzoxMDA2MDQy
+def set_rnd_seed():
+    np.random.seed(RND_SEED)
+    random.seed(RND_SEED)
+    torch.manual_seed(RND_SEED)
+    torch.cuda.manual_seed(RND_SEED)
+    # When running on the CuDNN backend, two further options must be set
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    # Set a fixed value for the hash seed
+    os.environ["PYTHONHASHSEED"] = str(RND_SEED)
+    print(f"[info] Random seed set as {RND_SEED}")
 
 
 def compute_metrics(eval_pairs):
@@ -49,13 +63,15 @@ def compute_metrics(eval_pairs):
     return results
 
 if __name__ == '__main__':
+    set_rnd_seed()
+
     train_dset = roundataset(
         'data/train_clean_sections.pickle',
         'data/image_feats.pickle'
     )
     print ("[info] train set loaded, len =", len(train_dset))
     val_dset = roundataset(
-        'data/test_clean_sections.pickle',
+        'data/valid_clean_sections.pickle',
         'data/image_feats.pickle'
     )
     print ("[info] valid set loaded, len =", len(val_dset))
