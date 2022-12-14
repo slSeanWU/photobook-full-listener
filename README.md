@@ -14,16 +14,16 @@ python
 >>> nltk.download('punkt')
 ```
 
-* get logs.zip and images.zip at [photobook_dataset](https://github.com/dmg-photobook/photobook_dataset/) and save at `data/`
+* get `logs.zip` and `images.zip` at [photobook_dataset](https://github.com/dmg-photobook/photobook_dataset/) and save at `data/`
 
 ## Preprocess
 
 1. Read `../data/data_splits.json` and save processed log data to `../data/{split}_sections.pickle`
 
-  ```bash
-  cd preprocess
-  python dialogue_segmentation.py
-  ```
+     ```bash
+     cd preprocess
+     python dialogue_segmentation.py
+     ```
 
 2. Generate CLIP score
 
@@ -39,4 +39,16 @@ python
 
   ```bash
   python process_image.py
+  ```
+  
+## Training and Inference
+
+- Edit hyperparams in `model/variables.py`
+- Training (with the best "CLIPScore to all layers" configuration)
+  ```zsh
+  python3 train.py config_paper/vlscore_all.json exp/vlscore_all
+  ```
+- Inference
+  ```zsh
+  python3 inference.py exp/vlscore_all
   ```
