@@ -1,4 +1,4 @@
-# photobook-full-listener
+# Listener Model for PhotoBook Game
 
 Assignment 4 (Final Project), 11711 Advanced NLP, Fall '22
 
