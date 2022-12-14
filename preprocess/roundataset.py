@@ -34,6 +34,7 @@ class roundataset(Dataset):
                 )
 
     def round2dict(self, gameround, tokenizer, player, gameid, roundnr, clip_scores, image_paths, image_pred_ids):
+        # print(f'Appending game {gameid} round {roundnr}')
         input_ids = []
         labels = []
         clips = []
@@ -106,13 +107,13 @@ class roundataset(Dataset):
         # Pad ararys to uniform length
         if len(item['input_ids']) < self.maxseqlen:
             item['input_ids'] = np.pad(item['input_ids'], (0, self.maxseqlen -
-                                                        len(item['input_ids'])),
-                                    'constant', constant_values=(0,))
+                                                           len(item['input_ids'])),
+                                       'constant', constant_values=(0,))
             item['labels'] = np.pad(item['labels'], ((
                 0, self.maxseqlen - item['labels'].shape[0]), (0, 0)), 'constant', constant_values=(-100,))
             item['vlscores'] = np.pad(item['vlscores'], ((
                 0, self.maxseqlen - item['vlscores'].shape[0]), (0, 0)), 'constant', constant_values=(0.,))
-        
+
         elif len(item['input_ids']) > self.maxseqlen:
             item['input_ids'] = item['input_ids'][:self.maxseqlen]
             item['labels'] = item['labels'][:self.maxseqlen, :]
@@ -138,7 +139,7 @@ if __name__ == '__main__':
     dset = roundataset(
         f'../data/{split}_clean_sections.pickle', image_feats_dict)
 
-    print (len(dset))
+    print(len(dset))
     for i in range(10):
         samp = dset[i]
 
