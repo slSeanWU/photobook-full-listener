@@ -129,9 +129,11 @@ class ListenerModelBertAttCtxHist(nn.Module):
             for s in range(len(batch_prev_hist)):
 
                 if len(batch_prev_hist[s]) > 0:
-
                     # if there is history for a candidate image
-                    hist_rep = torch.stack(batch_prev_hist[s]).to(device)
+                    if input_text is not None:
+                        hist_rep = self.bert_emb( torch.LongTensor(batch_prev_hist[s], device=device) )
+                    else:
+                        hist_rep = torch.stack(batch_prev_hist[s]).to(device)
 
                     # take the average history vector
                     hist_avg = self.dropout(hist_rep.sum(dim=0)/hist_rep.shape[0])
