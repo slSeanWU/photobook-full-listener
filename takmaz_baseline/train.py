@@ -1,8 +1,6 @@
 import os
 import sys
 import random
-sys.path.append("./model/")
-sys.path.append("./preprocess/")
 
 from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
 import numpy as np
