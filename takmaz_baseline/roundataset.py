@@ -94,8 +94,8 @@ class roundataset(Dataset):
             # image path to feature
             img_feat = self.get_img_feat(images[i])
             item = {
-                'gameid': gameid, 'roundnr': roundnr, 'input_text': np.array(input_ids),
-                'label': np.array([labels[-1][i]]), 'image_paths': image_paths,
+                #'gameid': gameid, 'roundnr': roundnr, 
+                'input_text': np.array(input_ids), 'label': np.array([labels[-1][i]]), 'image_paths': image_paths,
                 'img_pred': np.array(img_feat), 'prev_hist': ref_chain, 
             }
             ret.append(item)
@@ -141,10 +141,6 @@ class roundataset(Dataset):
                     [self.tokenizer.convert_tokens_to_ids('<|endoftext|>')]
                 ret[ind].extend(tokenized_msg)
 
-        # tensor cannot have varied length
-        for i in range(6):
-            ret[i] = self.pad(ret[i])
-        ret = np.array(ret)
         return ret
 
     def pad(self, msg):
@@ -179,7 +175,7 @@ class roundataset(Dataset):
         if isinstance(item['input_text'], np.ndarray):
             item['img_pred'] = torch.LongTensor(item['img_pred'])
             item['input_text'] = torch.LongTensor(item['input_text'])
-            item['prev_hist'] = torch.LongTensor(item['prev_hist'])
+            #item['prev_hist'] = torch.LongTensor(item['prev_hist'])
             item['label'] = torch.LongTensor(item['label'])
 
         _ret_item = copy.deepcopy(item)
