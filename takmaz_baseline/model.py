@@ -66,20 +66,20 @@ class ListenerModelBertAttCtxHist(nn.Module):
 
 
     def forward(
-            self, representations,  
-            separate_images, img_pred,
-            prev_hist, masks, device,
-            input_text=None,
+            self, separate_images, img_pred,
+            prev_hist, prev_hist_len, masks, 
+            representations=None, input_text=None,
         ):
         """
-        @param representations: utterance converted into BERT representations
         @param separate_images: image feature vectors for all 6 images in the context separately
         @param img_pred: the highlighted image to predict common/different
-        @param prev_hist: contains histories for 6 images separately (if exists for a given image)
+        @param prev_hist: contains padded histories for 6 images separately (if exists for a given image)
+        @param prev_hist_len: contains length of histories for 6 images separately (if exists for a given image)
         @param masks: attention mask for pad tokens
-        @param device: device to which the tensors are moved
+        @param representations: utterance converted into BERT representations
         @param input_text: dialogue text (per round) in the form BERT token ids
         """
+        assert input_text is not None or representations is not None
 
         if input_text is not None:
             assert representations is None, "got input_text, representations should be None"
@@ -91,6 +91,8 @@ class ListenerModelBertAttCtxHist(nn.Module):
             batch_size = representations.shape[0]  # effective batch size
             # utterance representations are processed
             representations = self.dropout(representations)
+
+        device = input_text.device if input_text is not None else representations.device
 
         input_reps = self.relu(self.lin_emb2hid(representations))   # (batch, seqlen, hidden)
 
@@ -106,6 +108,7 @@ class ListenerModelBertAttCtxHist(nn.Module):
         outputs_att = self.att_linear_2(self.tanh(self.att_linear_1(mm_reps)))
 
         # mask pads so that no attention is paid to them (with -inf)
+        masks = masks.unsqueeze(2)      # (batch, max_seqlen, 1) 
         outputs_att = outputs_att.masked_fill_(masks, float('-inf'))
 
         # final attention weights
@@ -123,13 +126,15 @@ class ListenerModelBertAttCtxHist(nn.Module):
         for b in range(batch_size):
 
             batch_prev_hist = prev_hist[b]
+            batch_prev_hist_len = prev_hist_len[b]
 
             for s in range(len(batch_prev_hist)):
 
-                if len(batch_prev_hist[s]) > 0:
+                if batch_prev_hist_len[s] > 0:
                     # if there is history for a candidate image
                     if input_text is not None:
-                        ref_chain = torch.LongTensor([batch_prev_hist[s]]).to(device)
+                        ref_chain = batch_prev_hist[s][:batch_prev_hist_len[s]]
+                        ref_chain = ref_chain.unsqueeze(0)
                         hist_rep = self.bert_emb(input_ids=ref_chain) # (1, seqlen, 768) 
                         hist_rep = hist_rep.squeeze(0)
                     else:
@@ -185,16 +190,21 @@ if __name__ == "__main__":
     input_text = torch.randint(0, 1000, (bsize, seqlen))
     separate_images = torch.randn(bsize, n_img, img_dim)
     visual_context = torch.randn(bsize, n_img * img_dim)
-    prev_hist = [ [[] for _ in range(n_img)] for _ in range(bsize)]
+    one_prev_hist = [[1,2,3,0,0],[0]*5,[4,5,0,0,0],[6,7,8,9,10],[0]*5, [0]*5]
+    one_prev_hist_len = [3,0,2,5,0,0]
+    prev_hist = [ one_prev_hist[:] for _ in range(bsize)]
+    prev_hist_len = [one_prev_hist_len for _ in range(bsize)]
+    #prev_hist = [ [[] for _ in range(n_img)] for _ in range(bsize)]
     masks = torch.randint(0, 2, (bsize, seqlen, 1))
     masks = masks == 1
-    device = "cuda"
+    device = "cpu"
 
     model_out = model(
         None,
         separate_images,
         img_pred,
         prev_hist,
+        prev_hist_len,
         masks,
         device,
         input_text=input_text

@@ -86,7 +86,7 @@ class roundataset(Dataset):
         labels = list(itertools.chain(*labels))
 
         # NOTE: add ref chain
-        ref_chain = self.get_tokenized_ref_chain(gameid, roundnr, image_paths)
+        ref_chain, ref_chain_len = self.get_tokenized_ref_chain(gameid, roundnr, image_paths)
 
         assert len(images) == 3 and len(labels[-1]) == 3
         ret = []
@@ -95,8 +95,8 @@ class roundataset(Dataset):
             img_feat = self.get_img_feat(images[i])
             item = {
                 #'gameid': gameid, 'roundnr': roundnr, 
-                'input_text': np.array(input_ids), 'label': np.array([labels[-1][i]]), 'image_paths': image_paths,
-                'img_pred': np.array(img_feat), 'prev_hist': ref_chain, 
+                'input_text': np.array(input_ids), 'labels': np.array([labels[-1][i]]), 'image_paths': image_paths,
+                'img_pred': np.array(img_feat), 'prev_hist': np.array(ref_chain), 'prev_hist_len': np.array(ref_chain_len), 
             }
             ret.append(item)
 
@@ -120,11 +120,15 @@ class roundataset(Dataset):
         # https://github.com/slSeanWU/photobook-full-listener/blob/08f338eb35fb404e1f67d5f6a344fc2b2089b730/preprocess/processor.py#L72
         rid -= 1
         
+        ret = [[], [], [], [], [], []]
+        ret_len = [0]*6
+
         if (str(gid), rid) not in self.ref_chains:
             #print(f'({gid}, {rid}) not in ref chains')
-            return []
+            for i in range(6):
+                ret[i], _ = self.pad(ret[i])
+            return ret, ret_len 
     
-        ret = [[], [], [], [], [], []]
         img2ind = self.get_img2ind(image_paths)
         chains = self.ref_chains[(str(gid), rid)]
         
@@ -139,17 +143,30 @@ class roundataset(Dataset):
                     'input_ids']
                 tokenized_msg = tokenized_msg[1:-1] + \
                     [self.tokenizer.convert_tokens_to_ids('<|endoftext|>')]
+                
                 ret[ind].extend(tokenized_msg)
 
-        return ret
+        for ind in range(6):
+            msg, length = self.pad(ret[ind])
+            ret[ind] = msg
+            ret_len[ind] = length
+
+        return ret, ret_len
 
     def pad(self, msg):
+        length = len(msg)
         if len(msg) < self.maxseqlen:
             msg = np.pad(msg, (0, self.maxseqlen-len(msg)), 
                                    'constant', constant_values=(0,))
         elif len(msg) > self.maxseqlen:
             msg = msg[:self.maxseqlen]
-        return msg
+            length = self.maxseqlen
+        return msg, length
+
+    def get_mask(self, input_len, maxseqlen):
+        # items to be masked are TRUE
+        mask = [False] * input_len + [True] * (maxseqlen - input_len)
+        return np.array(mask)
 
     def __len__(self):
         return len(self.examples)
@@ -162,7 +179,8 @@ class roundataset(Dataset):
         image_feats = torch.stack(image_feats).float()    # (6, 512)
 
         item = self.examples[idx]
-
+        input_len = len(item['input_text'])
+        
         # Pad ararys to uniform length
         if len(item['input_text']) < self.maxseqlen:
             item['input_text'] = np.pad(item['input_text'], (0, self.maxseqlen -
@@ -171,17 +189,23 @@ class roundataset(Dataset):
 
         elif len(item['input_text']) > self.maxseqlen:
             item['input_text'] = item['input_text'][:self.maxseqlen]
+            input_len = self.maxseqlen 
+
+        masks = self.get_mask(input_len, self.maxseqlen)
 
         if isinstance(item['input_text'], np.ndarray):
-            item['img_pred'] = torch.LongTensor(item['img_pred'])
+            item['img_pred'] = torch.tensor(item['img_pred']).float()
             item['input_text'] = torch.LongTensor(item['input_text'])
-            #item['prev_hist'] = torch.LongTensor(item['prev_hist'])
-            item['label'] = torch.LongTensor(item['label'])
+            item['masks'] = torch.tensor(masks)
+            item['prev_hist'] = torch.LongTensor(item['prev_hist'])
+            item['prev_hist_len'] = torch.LongTensor(item['prev_hist_len'])
+            item['labels'] = torch.LongTensor(item['labels'])
 
         _ret_item = copy.deepcopy(item)
         _ret_item['separate_images'] = copy.deepcopy(image_feats)
 
         del image_feats
+        #print(_ret_item['input_text'].shape, _ret_item['label'], _ret_item['img_pred'].shape, _ret_item.keys())
 
         return _ret_item
 
@@ -200,7 +224,10 @@ if __name__ == '__main__':
         print(f'img_pred shape = {samp["img_pred"].shape}')
         print(f'separate_images shape = {samp["separate_images"].shape}')
         print(f'input_text shape = {samp["input_text"].shape}')
-        print(f'label = {samp["label"]}')
+        print(f'masks shape = {samp["masks"].shape}')
+        #print(f'masks = {samp["masks"]}')
+        print(f'labels = {samp["labels"]}')
         print(f'prev_hist shape = {samp["prev_hist"].shape}')
-        print(samp["prev_hist"])
+        print(f'prev_hist = {samp["prev_hist"]}')
+        print(f'prev_hist_len = {samp["prev_hist_len"]}')
         print('')
