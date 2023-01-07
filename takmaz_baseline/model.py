@@ -22,8 +22,8 @@ class ListenerModelBertAttCtxHist(nn.Module):
         self.lin_emb2hid = nn.Linear(self.embedding_dim, self.hidden_dim)
         self.lin_emb2HIST = nn.Linear(self.embedding_dim, self.hidden_dim)  # here we also have history
 
-        # Concatenation of 6 images in the context projected to hidden
-        self.lin_context = nn.Linear(self.img_dim * 6, self.hidden_dim)
+        # highlighted image projected to hidden
+        self.lin_img = nn.Linear(self.img_dim, self.hidden_dim)
 
         # Multimodal (bert representation; visual context)
         self.lin_mm = nn.Linear(self.hidden_dim * 2, self.hidden_dim)
@@ -54,7 +54,7 @@ class ListenerModelBertAttCtxHist(nn.Module):
     def init_weights(self):
 
         for ll in [self.linear_separate, self.lin_emb2hid, self.lin_emb2HIST,
-                   self.lin_context, self.lin_mm,
+                   self.lin_img, self.lin_mm,
                    self.att_linear_1, self.att_linear_2,
                    self.out_fc1, self.out_fc2]:
 
@@ -66,20 +66,19 @@ class ListenerModelBertAttCtxHist(nn.Module):
 
 
     def forward(
-            self, representations, lengths, 
-            separate_images, visual_context, 
+            self, representations,  
+            separate_images, img_pred,
             prev_hist, masks, device,
             input_text=None,
         ):
         """
-        @param input_text: dialogue text (per round) in the form BERT token ids
         @param representations: utterance converted into BERT representations
-        @param lengths: utterance lengths (after being tokenised) - not used in this model
         @param separate_images: image feature vectors for all 6 images in the context separately
-        @param visual_context: concatenation of 6 images in the context
+        @param img_pred: the highlighted image to predict common/different
         @param prev_hist: contains histories for 6 images separately (if exists for a given image)
         @param masks: attention mask for pad tokens
         @param device: device to which the tensors are moved
+        @param input_text: dialogue text (per round) in the form BERT token ids
         """
 
         if input_text is not None:
@@ -93,16 +92,15 @@ class ListenerModelBertAttCtxHist(nn.Module):
             # utterance representations are processed
             representations = self.dropout(representations)
 
-        input_reps = self.relu(self.lin_emb2hid(representations))
+        input_reps = self.relu(self.lin_emb2hid(representations))   # (batch, seqlen, hidden)
 
-        # visual context is processed
-        visual_context = self.dropout(visual_context)
-        projected_context = self.relu(self.lin_context(visual_context))
-
-        repeated_context = projected_context.unsqueeze(1).repeat(1, input_reps.shape[1], 1)
+        # highlighted img is processed
+        img_pred = self.dropout(img_pred)
+        projected_img = self.relu(self.lin_img(img_pred))           # (batch, hidden)
+        repeated_img = projected_img.unsqueeze(1).repeat(1, input_reps.shape[1], 1)     # (batch, seqlen, hidden)
 
         # multimodal utterance representations
-        mm_reps = self.relu(self.lin_mm(torch.cat((input_reps, repeated_context), dim=2)))
+        mm_reps = self.relu(self.lin_mm(torch.cat((input_reps, repeated_img), dim=2)))
 
         # attention over the multimodal utterance representations (tokens and visual context interact)
         outputs_att = self.att_linear_2(self.tanh(self.att_linear_1(mm_reps)))
@@ -131,7 +129,9 @@ class ListenerModelBertAttCtxHist(nn.Module):
                 if len(batch_prev_hist[s]) > 0:
                     # if there is history for a candidate image
                     if input_text is not None:
-                        hist_rep = self.bert_emb( torch.LongTensor(batch_prev_hist[s], device=device) )
+                        ref_chain = torch.LongTensor([batch_prev_hist[s]]).to(device)
+                        hist_rep = self.bert_emb(input_ids=ref_chain) # (1, seqlen, 768) 
+                        hist_rep = hist_rep.squeeze(0)
                     else:
                         hist_rep = torch.stack(batch_prev_hist[s]).to(device)
 
@@ -142,7 +142,6 @@ class ListenerModelBertAttCtxHist(nn.Module):
                     separate_images[b][s] += self.relu(self.lin_emb2HIST(hist_avg))
 
         # some candidates are now multimodal with the addition of history
-
         separate_images = self.relu(separate_images)
         separate_images = F.normalize(separate_images, p=2, dim=2)
 
@@ -182,19 +181,19 @@ if __name__ == "__main__":
     n_img = 6
 
     representations = torch.randn(bsize, seqlen, embed_dim)
+    img_pred = torch.randn(bsize, img_dim)
     input_text = torch.randint(0, 1000, (bsize, seqlen))
-    lengths = None
     separate_images = torch.randn(bsize, n_img, img_dim)
     visual_context = torch.randn(bsize, n_img * img_dim)
     prev_hist = [ [[] for _ in range(n_img)] for _ in range(bsize)]
     masks = torch.randint(0, 2, (bsize, seqlen, 1))
+    masks = masks == 1
     device = "cuda"
 
     model_out = model(
         None,
-        lengths,
         separate_images,
-        visual_context,
+        img_pred,
         prev_hist,
         masks,
         device,
