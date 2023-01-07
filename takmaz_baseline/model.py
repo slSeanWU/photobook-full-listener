@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from transformers.models.bert.modeling_bert import BertModel
+from transformers.modeling_outputs import SequenceClassifierOutput
 
 
 class ListenerModelBertAttCtxHist(nn.Module):
@@ -67,7 +68,7 @@ class ListenerModelBertAttCtxHist(nn.Module):
 
     def forward(
             self, separate_images, img_pred,
-            prev_hist, prev_hist_len, masks, 
+            prev_hist, prev_hist_len, masks, labels, 
             representations=None, input_text=None,
         ):
         """
@@ -76,6 +77,7 @@ class ListenerModelBertAttCtxHist(nn.Module):
         @param prev_hist: contains padded histories for 6 images separately (if exists for a given image)
         @param prev_hist_len: contains length of histories for 6 images separately (if exists for a given image)
         @param masks: attention mask for pad tokens
+        @param labels: common/different 
         @param representations: utterance converted into BERT representations
         @param input_text: dialogue text (per round) in the form BERT token ids
         """
@@ -163,9 +165,25 @@ class ListenerModelBertAttCtxHist(nn.Module):
         out = self.out_fc1(torch.cat([separate_images, attended_hids], dim=1))
         out = self.out_actfn(out)
         out = self.dropout(out)
-        out = self.out_fc2(out)
+        out = self.out_fc2(out)     # (batch, 2); labels: (batch, 1)
+        #return out
 
-        return out
+        loss = None
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(out, labels.view(-1))
+
+#        if not return_dict:
+#            output = (logits,) + outputs[1:]
+#            return ((loss,) + output) if loss is not None else output
+
+        ret = SequenceClassifierOutput(
+            loss=loss,
+            logits=out,
+            #hidden_states=outputs.hidden_states,
+            #attentions=outputs.attentions
+        )
+        return ret
 
 
 if __name__ == "__main__":

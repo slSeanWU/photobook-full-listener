@@ -39,22 +39,11 @@ def set_rnd_seed():
 
 def compute_metrics(eval_pairs):
     predictions, labels = eval_pairs
-    predictions = np.argmax(predictions[..., 1:], axis=-1) + 1
+    labels = labels.reshape(-1)
+    predictions = np.argmax(predictions, axis=-1) 
 
-    true_predictions = []
-    true_labels = []
-
-    # fetch last timestep outputs only
-    bsize, seqlen = predictions.shape[0], predictions.shape[1]
-    for b in range(bsize):
-        for pos in range(seqlen - 1, -1, -1):
-            if labels[b, pos, 0] != -100:
-                true_predictions.extend(predictions[b, pos])
-                true_labels.extend(labels[b, pos])
-                break
-    
     # print (true_predictions, true_labels)
-    results = metric.compute(predictions=true_predictions, references=true_labels)
+    results = metric.compute(predictions=predictions, references=labels)
 
     # print (results)
 
