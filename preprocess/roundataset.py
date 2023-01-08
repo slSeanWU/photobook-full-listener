@@ -11,7 +11,9 @@ import copy
 
 
 class roundataset(Dataset):
-    def __init__(self, picklefile, image_feats_path, image_dir='../data/images'):
+    def __init__(self, picklefile, image_feats_path,
+                 image_dir='../data/images', dense_learning_signals=True,
+                 separate_images=True):
         self.examples = []
         self.image_dir = image_dir
         self.image_feats_dict = pickle.load(
@@ -21,19 +23,37 @@ class roundataset(Dataset):
         tokenizer = DebertaTokenizer.from_pretrained("microsoft/deberta-base")
         sections = pd.read_pickle(picklefile)
 
-        # sections = sections[:10]
+        self.dense_learning_signals = dense_learning_signals
+        self.separate_images = separate_images
 
         for gameid, game in sections:
             for rounddict in game:
                 agent_id = rounddict['agent_id']
-                self.examples.append(
-                    self.round2dict(
-                        rounddict['round_data'], tokenizer, agent_id, gameid,
-                        rounddict['roundnr'], rounddict['clip_scores'], rounddict['image_set'], rounddict['image_pred_ids']
-                    )
+                this_dict = self.round2dict(
+                    rounddict['round_data'], tokenizer, agent_id, gameid,
+                    rounddict['roundnr'], rounddict['clip_scores'],
+                    rounddict['image_set'], rounddict['image_pred_ids']
                 )
+                if self.separate_images:
+                    for sep_sample in self.breakup_imgs(this_dict):
+                        self.examples.append(sep_sample)
+                else:
+                    self.examples.append(this_dict)
 
-    def round2dict(self, gameround, tokenizer, player, gameid, roundnr, clip_scores, image_paths, image_pred_ids):
+    def breakup_imgs(self, rounddict):
+        result = []
+        for i, predid in enumerate(rounddict['img_pred_ids']):
+            if predid != 0:
+                newdict = copy.deepcopy(rounddict)
+                newdict['labels'] = np.array([[x]
+                                              for x in newdict['labels'][:, predid-1]])
+                newdict['img_pred_ids'] = np.array(
+                    [1 if x == i else 0 for x in range(len(newdict['img_pred_ids']))])
+                result.append(newdict)
+        return result
+
+    def round2dict(self, gameround, tokenizer, player, gameid, roundnr,
+                   clip_scores, image_paths, image_pred_ids):
         # print(f'Appending game {gameid} round {roundnr}')
         input_ids = []
         labels = []
@@ -45,6 +65,7 @@ class roundataset(Dataset):
         # 0 = undecided, 1 = common, 2 = different
         image_status = [[0] for _ in images]
         for i, m in enumerate(gameround.messages):
+
             if m.type == "text":
                 msgtxt = m.text
                 # '[CLS] for self, [SEP] for other'
@@ -84,6 +105,9 @@ class roundataset(Dataset):
         clips = np.vstack(clips)
         image_pred_ids = np.array(image_pred_ids)
 
+        if not self.dense_learning_signals:
+            labels = [labels[-1] for _ in range(len(labels))]
+
         ret = {
             'gameid': gameid, 'roundnr': roundnr, 'input_ids': np.array(input_ids),
             'labels': np.array(labels), 'vlscores': clips, 'image_paths': image_paths,
@@ -109,10 +133,10 @@ class roundataset(Dataset):
             item['input_ids'] = np.pad(item['input_ids'], (0, self.maxseqlen -
                                                            len(item['input_ids'])),
                                        'constant', constant_values=(0,))
-            item['labels'] = np.pad(item['labels'], ((
-                0, self.maxseqlen - item['labels'].shape[0]), (0, 0)), 'constant', constant_values=(-100,))
             item['vlscores'] = np.pad(item['vlscores'], ((
                 0, self.maxseqlen - item['vlscores'].shape[0]), (0, 0)), 'constant', constant_values=(0.,))
+            item['labels'] = np.pad(item['labels'], ((
+                0, self.maxseqlen - item['labels'].shape[0]), (0, 0)), 'constant', constant_values=(-100,))
 
         elif len(item['input_ids']) > self.maxseqlen:
             item['input_ids'] = item['input_ids'][:self.maxseqlen]
