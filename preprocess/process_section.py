@@ -133,7 +133,7 @@ def process_section(sections, image_feats_lookup, model, device):
             new_sec["label_actions"], highlighted_imgs = \
                 mark_labeling_actions(spk, sec["targets"], img_idx_dict)
 
-            # NOTE (Shih-Lun): added to conform to model inputs, 
+            # NOTE (Shih-Lun): added to conform to model inputs,
             #                  e.g., [0, 1, 0, 2, 0, 3] if 2nd, 4th, 6th imgs are highlighted
             new_sec["image_pred_ids"] = [0] * 6
             highlighted_cnt = 0
@@ -144,7 +144,8 @@ def process_section(sections, image_feats_lookup, model, device):
             # print (new_sec["label_actions"])
             # print (new_sec["image_pred_ids"], '\n')
 
-            new_sec["clip_scores"] = calc_clip(sec["segments"], sec["image_set"][spk], image_feats_lookup, model, device)
+            new_sec["clip_scores"] = calc_clip(
+                sec["segments"], sec["image_set"][spk], image_feats_lookup, model, device)
 
             ret.append(new_sec)
 
@@ -162,7 +163,7 @@ def process(filename, image_feats_lookup, model, device, split):
     for gid, sections in game_sections:
         # each game has N rounds, N = len(sections)
         print('-'*50, "game id:", gid, f'[{len(sections)} rounds]', '-'*50)
-        print (datetime.datetime.now())
+        print(datetime.datetime.now())
 
         res.append((gid, process_section(
             sections, image_feats_lookup, model, device)))
