@@ -1,6 +1,8 @@
 import argparse
 import json
 import os
+import glob
+import sys
 os.environ["CURL_CA_BUNDLE"] = ""
 import pickle
 import spacy
@@ -15,6 +17,10 @@ from utils import text_to_bow, stopwords_filter, load_logs, preprocess_captions,
 import nltk
 nltk.download('wordnet')
 nltk.download('omw-1.4')
+
+sys.path.insert(0,'../preprocess/')
+import process_section
+import clipscore
 
 def get_best_description(utterances):
     best_description = ('', [], None, 0)
@@ -145,6 +151,27 @@ def extract(logs, from_first_common=True):
 
     return segments
 
+def process_images(image_dir, model, device):
+    """
+    Almost the same as process_section.process_images,
+    just changed num_workers to 0 to account for local issues.
+
+    If num_workers=8 will not throw errors, the original 8 is advised.
+    """
+    image_paths = glob.glob(f'{image_dir}/*/*.jpg')
+    # a dictionary
+    image_feats_lookup = clipscore.extract_all_images(
+        image_paths, model, device, batch_size=64, num_workers=0)
+    return image_feats_lookup
+
+def gen_clip_score(img_name, prompt, image_feats_lookup, model, device):
+    """
+    Generate the numerical clip score between 1 image and 1 prompt.
+    """
+    image_set = [img_name for _ in range(6)]
+    segments = [('s1', prompt)]
+    result = process_section.calc_clip(segments, image_set, image_feats_lookup, model, device)
+    return result[0][0]
 
 def score(image_paths,
           chains,
@@ -153,7 +180,12 @@ def score(image_paths,
           remove_nondiscriminative_caption_words,
           descriptions_as_captions,
           vg_attributes=None,
-          vg_relations=None):
+          vg_relations=None,
+          use_clip_score=True):
+
+    csmodel, csdevice = clipscore.get_clip_mdl()
+    image_feats_lookup = process_images('../images', csmodel, csdevice)
+
     # Whether to use Visual Genome scene graphs
     use_vg = (vg_attributes is not None) and (vg_relations is not None)
 
@@ -205,6 +237,13 @@ def score(image_paths,
                                                     [mean_bert_precision, mean_bert_recall, mean_bert_f1]):
                     fields[score_str] = bert_score_fn(_caption_reprs[img_id_str], utt_bow,
                                                       stopwords=(stopwords | caption_stopwords))
+
+                if use_clip_score:
+                    fields['F1_Score'] = gen_clip_score(img_path,
+                                                        fields['Message_Text'],
+                                                        image_feats_lookup,
+                                                        csmodel,
+                                                        csdevice)
 
                 if use_vg:
                     visual_context = set(fields['Round_Images_A']) | set(fields['Round_Images_B'])
