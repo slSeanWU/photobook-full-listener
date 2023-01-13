@@ -21,7 +21,8 @@ def process_images(image_dir, model, device):
     return image_feats_lookup
 
 
-def calc_clip(segments, image_set, image_feats_lookup, model, device):
+def calc_clip(segments, image_set, image_feats_lookup, model, device,
+              num_pics=6):
     # image features of shape (6, 512)
     img_feats = []
     for img in image_set:
@@ -36,7 +37,7 @@ def calc_clip(segments, image_set, image_feats_lookup, model, device):
     utts = []
 
     for spk, utt in segments:
-        utts += [utt] * 6
+        utts += [utt] * num_pics
 
     # get image-text clipscore, where len(per_instance_image_text) = 6
     _, per_instance_image_text, candidate_feats = get_clip_score(
@@ -45,7 +46,7 @@ def calc_clip(segments, image_set, image_feats_lookup, model, device):
     clips.append(per_instance_image_text)
 
     clips = np.array(clips)     # [N_segments, 6]
-    clips = clips.reshape(-1, 6)
+    clips = clips.reshape(-1, num_pics)
     return clips
 
 

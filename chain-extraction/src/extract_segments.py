@@ -156,22 +156,30 @@ def process_images(image_dir, model, device):
     Almost the same as process_section.process_images,
     just changed num_workers to 0 to account for local issues.
 
-    If num_workers=8 will not throw errors, the original 8 is advised.
+    If num_workers=8 will not throw errors, a larger num_workers is advised.
     """
     image_paths = glob.glob(f'{image_dir}/*/*.jpg')
     # a dictionary
     image_feats_lookup = clipscore.extract_all_images(
-        image_paths, model, device, batch_size=64, num_workers=0)
+        image_paths, model, device, batch_size=512, num_workers=32)
     return image_feats_lookup
 
-def gen_clip_score(img_name, prompt, image_feats_lookup, model, device):
+def gen_clip_score(img_name, prompts, image_feats_lookup, model, device):
     """
-    Generate the numerical clip score between 1 image and 1 prompt.
+    Generate the clipscore between one image and a collection of prompts.
+    Params:
+        img_name: str, lookup-able in image_feats_lookup
+        prompts: iterable, containing strings
+        image_feats_lookup: dict, sends img_name to feature tensor
+        model, device: prepared by get_clip_mdl()
+    Returns:
+        A dict where each key is a prompt from prompts and each value is a float
+            representing the clipscore between that prompt and the img
     """
-    image_set = [img_name for _ in range(6)]
-    segments = [('s1', prompt)]
-    result = process_section.calc_clip(segments, image_set, image_feats_lookup, model, device)
-    return result[0][0]
+    image_set = [img_name]
+    segments = [('s1', prompt) for prompt in prompts]
+    result = process_section.calc_clip(segments, image_set, image_feats_lookup, model, device, num_pics=1)
+    return {prompts[i]: result[i][0] for i in range(len(prompts))}
 
 def score(image_paths,
           chains,
@@ -201,6 +209,11 @@ def score(image_paths,
             current_round = -1
             current_game = -1
             utterances_in_current_round = []
+
+        if use_clip_score:
+            prompts = [fields['Message_Text'] for fields in chains[img_path]]
+            clipscore_lookup = gen_clip_score(img_path, prompts,
+                                              image_feats_lookup, csmodel, csdevice)
 
         new_c = []
         for fields in chains[img_path]:
@@ -239,11 +252,7 @@ def score(image_paths,
                                                       stopwords=(stopwords | caption_stopwords))
 
                 if use_clip_score:
-                    fields['F1_Score'] = gen_clip_score(img_path,
-                                                        fields['Message_Text'],
-                                                        image_feats_lookup,
-                                                        csmodel,
-                                                        csdevice)
+                    fields['F1_Score'] = clipscore_lookup[fields['Message_Text']]
 
                 if use_vg:
                     visual_context = set(fields['Round_Images_A']) | set(fields['Round_Images_B'])
