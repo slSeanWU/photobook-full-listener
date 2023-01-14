@@ -161,7 +161,7 @@ def process_images(image_dir, model, device):
     image_paths = glob.glob(f'{image_dir}/*/*.jpg')
     # a dictionary
     image_feats_lookup = clipscore.extract_all_images(
-        image_paths, model, device, batch_size=512, num_workers=32)
+        image_paths, model, device, batch_size=512, num_workers=8)
     return image_feats_lookup
 
 def gen_clip_score(img_name, prompts, image_feats_lookup, model, device):
@@ -199,8 +199,11 @@ def score(image_paths,
 
     _caption_reprs = deepcopy(caption_representations)
     segments_with_scores = defaultdict(list)
+    imgpath_count = 0
 
     for img_path in tqdm(image_paths):
+
+        imgpath_count += 1
 
         # get image id as a string for compatibility
         img_id_str = img_path.split('/')[-1]
@@ -212,6 +215,7 @@ def score(image_paths,
 
         if use_clip_score:
             prompts = [fields['Message_Text'] for fields in chains[img_path]]
+            print(f'>> Compiling clip score for image {img_path} ({imgpath_count}/{len(image_paths)}) over {len(prompts)} prompts')
             clipscore_lookup = gen_clip_score(img_path, prompts,
                                               image_feats_lookup, csmodel, csdevice)
 
