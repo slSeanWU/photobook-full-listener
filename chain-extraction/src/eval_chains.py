@@ -121,5 +121,5 @@ if __name__ == '__main__':
         for score in ['Precision_Score', 'Recall_Score', 'F1_Score']:
             print('Heuristic:', score)
             P, R, _, _, _, _ = eval(chains_, score)
-            print('Precision: {:.2f}'.format(P))
-            print('Recall: {:.2f}'.format(R))
+            print('Precision: {:.3f}'.format(P))
+            print('Recall: {:.3f}'.format(R))
