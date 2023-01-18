@@ -12,6 +12,7 @@ from model import ListenerModelBertAttCtxHist
 from variables import (
     EPOCHS, CKPT_DIR, RND_SEED,
     BATCH_SIZE, PEAK_LR, WARMUP_STEPS, WEIGHT_DECAY,
+    REF_CHAIN_PATH,
 )
 
 metric = evaluate.load("accuracy")
@@ -52,17 +53,20 @@ if __name__ == '__main__':
 
     train_dset = roundataset(
         '../data/train_clean_sections.pickle',
-        '../data/image_feats.pickle'
+        '../data/image_feats.pickle',
+        ref_chain_path=REF_CHAIN_PATH,
     )
     print ("[info] train set loaded, len =", len(train_dset))
     val_dset = roundataset(
         '../data/valid_clean_sections.pickle',
-        '../data/image_feats.pickle'
+        '../data/image_feats.pickle',
+        ref_chain_path=REF_CHAIN_PATH,
     )
     print ("[info] valid set loaded, len =", len(val_dset))
     test_dset = roundataset(
         '../data/test_clean_sections.pickle',
-        '../data/image_feats.pickle'
+        '../data/image_feats.pickle',
+        ref_chain_path=REF_CHAIN_PATH,
     )
     print ("[info] test dset loaded, len =", len(test_dset))
 

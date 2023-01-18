@@ -5,3 +5,4 @@ PEAK_LR = 2e-5
 WARMUP_STEPS = 500
 WEIGHT_DECAY = 1e-3
 EPOCHS = 100
+REF_CHAIN_PATH = "ref_chain_img.pickle"
