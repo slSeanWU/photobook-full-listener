@@ -64,7 +64,8 @@ python
 
 ## Reference Chain Extraction
 
-* To reproduce the whole extraction and evaluation procedure described in the paper:
+* To reproduce the whole extraction and evaluation procedure described in the
+  paper, run these commands in `chain-extraction`.
 
   ```zsh
   python src/extract_segments.py out/all_segments.dict --stopwords --meteor --from_first_common --utterances_as_captions
