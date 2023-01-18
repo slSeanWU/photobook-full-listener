@@ -15,7 +15,7 @@ python
 
 * get `logs.zip` and `images.zip` at [photobook_dataset](https://github.com/dmg-photobook/photobook_dataset/), unzip and save inside `data/`
 
-## Preprocess
+## Data Preprocessing
 
 1. Read `../data/data_splits.json` and save processed log data to `../data/{split}_sections.pickle`
 
@@ -53,3 +53,28 @@ python
   ```zsh
   python3 inference.py exp/vlscore_all
   ```
+
+## Takmaz Baseline
+
+* To run the Takmaz baseline
+
+  ```zsh
+  python3 takmaz_baseline/train.py
+  ```
+
+## Reference Chain Extraction
+
+* To reproduce the whole extraction and evaluation procedure described in the paper:
+
+  ```zsh
+  python src/extract_segments.py out/all_segments.dict --stopwords --meteor --from_first_common --utterances_as_captions
+  python src/make_chains.py out/all_segments.dict out/all_chains.json --score f1
+  python src/make_gold_chains.py out/gold_chains.json --from_first_common --first_reference_only
+  python src/make_dataset.py out/all_chains.json out/gold_chains.json out/dataset
+
+  python src/extract_segments.py out/eval_segments.dict --path_game_logs data/logs/test_logs.dict --stopwords --meteor --from_first_common --utterances_as_captions
+  python src/eval_chains.py out/eval_segments.dict
+  ```
+
+* To alternatively use CLIPScore as part of the scoring in extraction, just
+  add the `--clipscore` option whenever running `extract_segments.py` above.

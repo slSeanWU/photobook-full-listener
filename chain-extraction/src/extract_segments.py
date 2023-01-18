@@ -189,7 +189,7 @@ def score(image_paths,
           descriptions_as_captions,
           vg_attributes=None,
           vg_relations=None,
-          use_clip_score=True):
+          use_clipscore=False):
 
     csmodel, csdevice = clipscore.get_clip_mdl()
     image_feats_lookup = process_images('../images', csmodel, csdevice)
@@ -213,7 +213,7 @@ def score(image_paths,
             current_game = -1
             utterances_in_current_round = []
 
-        if use_clip_score:
+        if use_clipscore:
             prompts = [fields['Message_Text'] for fields in chains[img_path]]
             print(f'>> Compiling clip score for image {img_path} ({imgpath_count}/{len(image_paths)}) over {len(prompts)} prompts')
             clipscore_lookup = gen_clip_score(img_path, prompts,
@@ -255,7 +255,7 @@ def score(image_paths,
                     fields[score_str] = bert_score_fn(_caption_reprs[img_id_str], utt_bow,
                                                       stopwords=(stopwords | caption_stopwords))
 
-                if use_clip_score:
+                if use_clipscore:
                     fields['F1_Score'] = clipscore_lookup[fields['Message_Text']]
 
                 if use_vg:
@@ -312,7 +312,7 @@ def main(logs_path,
          remove_caption_words,
          from_first_common,
          descriptions_as_captions,
-         use_vg):
+         use_vg, use_clipscore):
 
     if not (output_path.endswith('.dict') or output_path.endswith('.json')):
         raise ValueError('Invalid output path:', output_path)
@@ -351,7 +351,8 @@ def main(logs_path,
         remove_nondiscriminative_caption_words=remove_caption_words,
         descriptions_as_captions=descriptions_as_captions,
         vg_attributes=vg_attributes,
-        vg_relations=vg_relations
+        vg_relations=vg_relations,
+        use_clipscore=use_clipscore
     )
 
     # Store chains with scores
@@ -377,6 +378,8 @@ if __name__ == '__main__':
                         help='Whether to remove stopwords for the computation of utterances scores.')
     parser.add_argument('--meteor', action='store_true',
                         help='Whether to compute METEOR score using Virtual Genome scene graphs.')
+    parser.add_argument('--clipscore', action='store_true',
+                        help='Whether to score chains using CLIPScore.')
     parser.add_argument('--from_first_common', action='store_true',
                         help='Whether to start collecting referring utterances only after the target image has been '
                              'seen by both participants.')
@@ -435,4 +438,6 @@ if __name__ == '__main__':
 
     main(logs_path=args.path_game_logs, output_path=args.path_output, remove_stopwords=args.stopwords,
          use_vg=args.meteor, remove_caption_words=args.discriminative_captions,
-         from_first_common=args.from_first_common, descriptions_as_captions=args.utterances_as_captions)
+         from_first_common=args.from_first_common,
+         descriptions_as_captions=args.utterances_as_captions,
+         use_clipscore=args.clipscore)
