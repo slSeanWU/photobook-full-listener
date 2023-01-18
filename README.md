@@ -1,6 +1,5 @@
 # Listener Model for PhotoBook Game
 
-Assignment 4 (Final Project), 11711 Advanced NLP, Fall '22
 
 ## Installation
 
@@ -14,7 +13,7 @@ python
 >>> nltk.download('punkt')
 ```
 
-* get `logs.zip` and `images.zip` at [photobook_dataset](https://github.com/dmg-photobook/photobook_dataset/) and save at `data/`
+* get `logs.zip` and `images.zip` at [photobook_dataset](https://github.com/dmg-photobook/photobook_dataset/), unzip and save inside `data/`
 
 ## Preprocess
 
@@ -43,12 +42,14 @@ python
   
 ## Training and Inference
 
-- Edit hyperparams in `model/variables.py`
-- Training (with the best "CLIPScore to all layers" configuration)
+* Edit hyperparams in `model/variables.py`
+* Training (with the best "CLIPScore to all layers" configuration)
+
   ```zsh
   python3 train.py config_paper/vlscore_all.json exp/vlscore_all
   ```
-- Inference
+* Inference
+
   ```zsh
   python3 inference.py exp/vlscore_all
   ```
