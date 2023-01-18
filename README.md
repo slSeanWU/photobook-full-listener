@@ -43,7 +43,7 @@ python
 ## Training and Inference
 
 * Edit hyperparams in `model/variables.py`
-* Training (with the best "CLIPScore to all layers" configuration)
+* Training (with the best-performing configuration)
 
   ```zsh
   python3 train.py config_paper/vlscore_all.json exp/vlscore_all
@@ -54,18 +54,18 @@ python
   python3 inference.py exp/vlscore_all
   ```
 
-## Takmaz Baseline
-
+## Baseline Model Adapted from [Takmaz et al., 2020](https://aclanthology.org/2020.emnlp-main.353/)
+* Model implementation is based on [official PhotoBook repo](https://github.com/dmg-photobook/ref-gen-photobook/blob/main/models/listener/models/model_bert_att_ctx_hist.py)
 * To run the Takmaz baseline
 
   ```zsh
   python3 takmaz_baseline/train.py
   ```
 
-## Reference Chain Extraction
+## Utterance-based Reference Chain Extraction
+* This part is largely inherited from [official PhotoBook repo](https://github.com/dmg-photobook/ref-gen-photobook/tree/main/chain-extraction), except that we add the option to use CLIPScore as the scoring metric.
 
-* To reproduce the whole extraction and evaluation procedure described in the
-  paper, run these commands in `chain-extraction`.
+* To reproduce the whole extraction and evaluation procedure described in [(Takmaz et al., 2020)](https://aclanthology.org/2020.emnlp-main.353/), run these commands in `chain-extraction`.
 
   ```zsh
   python src/extract_segments.py out/all_segments.dict --stopwords --meteor --from_first_common --utterances_as_captions
@@ -78,4 +78,4 @@ python
   ```
 
 * To alternatively use CLIPScore as part of the scoring in extraction, just
-  add the `--clipscore` option whenever running `extract_segments.py` above.
+  add the `--clipscore` option when running `extract_segments.py` above.
