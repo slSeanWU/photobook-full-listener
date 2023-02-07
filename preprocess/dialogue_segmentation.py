@@ -237,12 +237,11 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
                         get_target(message)
                     )
                 except:
-                    print ("found labeling action before all chats, skip sample")
+                    print("found labeling action before all chats, skip sample")
                     label_before_all_chats = True
                     break
 
             i += 1
-
 
         if label_before_all_chats:
             round_counter -= 1
@@ -266,7 +265,7 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
                     f'Game {sections["gameid"]} Round {sections["roundnr"]} total targets={total_targets}')
             global corrupt_counter
             corrupt_counter += 1
-        
+
         assert corrupt_counter == 0
 
         section_counter += len(sections['targets'])
@@ -280,7 +279,7 @@ def game_segmentation(game, seg_verbose, cleaning_total, section_counter):
     return game_sections, cleaning_total, section_counter
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-data_path", type=str, default="../data")
 
@@ -313,3 +312,7 @@ if __name__ == '__main__':
         f"Got {corrupt_counter} rounds with targets != 6")
 
     print("Done.")
+
+
+if __name__ == '__main__':
+    main()
