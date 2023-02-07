@@ -106,7 +106,7 @@ class roundataset(Dataset):
         image_pred_ids = np.array(image_pred_ids)
 
         if not self.dense_learning_signals:
-            labels = [labels[-1] for _ in range(len(labels))]
+            labels = [np.full_like(labels[0], -100)] * (len(labels) - 1) + [labels[-1]]
 
         ret = {
             'gameid': gameid, 'roundnr': roundnr, 'input_ids': np.array(input_ids),
@@ -161,10 +161,14 @@ if __name__ == '__main__':
     split = 'test'
     image_feats_dict = '../data/image_feats.pickle'
     dset = roundataset(
-        f'../data/{split}_clean_sections.pickle', image_feats_dict)
+        f'../data/{split}_clean_sections.pickle', 
+        image_feats_dict,
+        dense_learning_signals=False,
+        separate_images=True
+    )
 
     print(len(dset))
-    for i in range(10):
+    for i in range(1):
         samp = dset[i]
 
         print(f'Example {i}')
@@ -173,4 +177,9 @@ if __name__ == '__main__':
         print(f'labels shape = {samp["labels"].shape}')
         print(f'vlscores shape = {samp["vlscores"].shape}')
         print(f'visual_inputs shape = {samp["visual_inputs"].shape}')
+
+        for j in range(len(samp['labels'])):
+            print (samp['labels'][j])
+        print (samp["img_pred_ids"])
+
         print('')

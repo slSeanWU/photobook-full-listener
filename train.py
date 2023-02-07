@@ -68,17 +68,23 @@ if __name__ == '__main__':
 
     train_dset = roundataset(
         'data/train_clean_sections.pickle',
-        'data/image_feats.pickle'
+        'data/image_feats.pickle',
+        separate_images=False,
+        dense_learning_signals=True,
     )
     print ("[info] train set loaded, len =", len(train_dset))
     val_dset = roundataset(
         'data/valid_clean_sections.pickle',
-        'data/image_feats.pickle'
+        'data/image_feats.pickle',
+        separate_images=False,
+        dense_learning_signals=True,
     )
     print ("[info] valid set loaded, len =", len(val_dset))
     test_dset = roundataset(
         'data/test_clean_sections.pickle',
-        'data/image_feats.pickle'
+        'data/image_feats.pickle',
+        separate_images=False,
+        dense_learning_signals=True,
     )
     print ("[info] test dset loaded, len =", len(test_dset))
 
