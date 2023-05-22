@@ -39,7 +39,7 @@ python
   ```bash
   python process_image.py
   ```
-  
+
 ## Training and Inference
 
 * Edit hyperparams in `model/variables.py`
@@ -62,9 +62,12 @@ python
   cd takmaz_baseline/
   python3 train.py
   ```
-  
+
 * To use reference chains extracted using CLIPScore
   * set `REF_CHAIN_PATH = ref_chain_img_clipscore.pickle` in `takmaz_baseline/variables.py`
+
+* Note that different random seeds might be needed in
+  `takmaz_baseline/variables.py` for optimal results in different experiments.
 
 ## Utterance-based Reference Chain Extraction
 * This part is largely inherited from [official PhotoBook repo](https://github.com/dmg-photobook/ref-gen-photobook/tree/main/chain-extraction), except that we add the option to use CLIPScore as the scoring metric.
