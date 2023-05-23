@@ -116,6 +116,7 @@ if __name__ == '__main__':
             dataloader_num_workers=8,
             logging_steps=50,
             load_best_model_at_end=True,
+            gradient_accumulation_steps=2
         ),
         train_dataset=train_dset,
         eval_dataset=val_dset,
