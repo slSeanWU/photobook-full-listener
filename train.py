@@ -15,7 +15,7 @@ from model.configuration_deberta_visual import DebertaWithVisualConfig
 from model.variables import (
     EPOCHS, CKPT_DIR, RND_SEED,
     BATCH_SIZE, PEAK_LR, WARMUP_STEPS, WEIGHT_DECAY,
-    PRETRAINED_MODEL_NAME,
+    PRETRAINED_MODEL_NAME, DLS
 )
 
 metric = evaluate.load("accuracy")
@@ -70,21 +70,21 @@ if __name__ == '__main__':
         'data/train_clean_sections.pickle',
         'data/image_feats.pickle',
         separate_images=False,
-        dense_learning_signals=True,
+        dense_learning_signals=DLS,
     )
     print ("[info] train set loaded, len =", len(train_dset))
     val_dset = roundataset(
         'data/valid_clean_sections.pickle',
         'data/image_feats.pickle',
         separate_images=False,
-        dense_learning_signals=True,
+        dense_learning_signals=DLS,
     )
     print ("[info] valid set loaded, len =", len(val_dset))
     test_dset = roundataset(
         'data/test_clean_sections.pickle',
         'data/image_feats.pickle',
         separate_images=False,
-        dense_learning_signals=True,
+        dense_learning_signals=DLS,
     )
     print ("[info] test dset loaded, len =", len(test_dset))
 
@@ -116,7 +116,7 @@ if __name__ == '__main__':
             dataloader_num_workers=8,
             logging_steps=50,
             load_best_model_at_end=True,
-            gradient_accumulation_steps=2
+            gradient_accumulation_steps=1
         ),
         train_dataset=train_dset,
         eval_dataset=val_dset,

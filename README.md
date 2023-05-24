@@ -46,12 +46,22 @@ python
 * Training (with the best-performing configuration)
 
   ```zsh
-  python3 train.py config_paper/vlscore_all.json exp/vlscore_all
+  python3 train.py config_paper/EXPERIMENT_JSON exp/EXPERIMENT_NAME
   ```
+
+* To reproduce logged ablations, use different `EXPERIMENT_JSON` for each run.
+    * Ours - `vlscore_all.json`
+    * + VisAttn - `vlscore_visattn.json`
+    * - CLIPScore - `base_deberta.json`
+    * - CLIPScore + VisAttn - `visattn.json`
+    * - Dense learning signals - `vlscore_all.json` (change `DLS` to `False`
+        in `model/variables.py`)
+* Tweak random seeds for optimal performance.
+
 * Inference
 
   ```zsh
-  python3 inference.py exp/vlscore_all
+  python3 inference.py exp/EXPERIMENT_NAME
   ```
 
 ## Baseline Model Adapted from [Takmaz et al., 2020](https://aclanthology.org/2020.emnlp-main.353/)

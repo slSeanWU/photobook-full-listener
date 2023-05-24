@@ -59,9 +59,15 @@ def compute_metrics(eval_pairs):
     return results
 
 if __name__ == '__main__':
+    # test_dset = roundataset(
+    #     'data/test_clean_sections.pickle',
+    #     'data/image_feats.pickle'
+    # )
     test_dset = roundataset(
         'data/test_clean_sections.pickle',
-        'data/image_feats.pickle'
+        'data/image_feats.pickle',
+        separate_images=False,
+        dense_learning_signals=True,
     )
     print ("[info] test set loaded, len =", len(test_dset))
 
