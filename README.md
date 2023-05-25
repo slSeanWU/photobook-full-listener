@@ -1,6 +1,10 @@
 # Listener Model for PhotoBook Game
 
+This repo houses the official PyTorch implementation for the following paper
 
+- **Listener Model for the PhotoBook Referential Game with CLIPScores as Implicit Reference Chain**  
+  Shih-Lun Wu, Yi-Hui Chou, and Liangze Li  
+  _Annual Meeting of the Association of Computational Linguistics (**ACL**) 2023_
 ## Installation
 
 ```bash
