@@ -33,5 +33,5 @@ jobs:
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
       with:
-        user: PsychologicalLog
-        password: pypi-AgEIcHlwaS5vcmcCJDAzOTI4MjI2LWJlNWYtNGVkMC1hOTc3LWVmZjJkMWQwN2E4OAACKlszLCJkN2Y4MzcxMi05MWVlLTRjNjktYjM5ZC1mMmM2MmRjOGE2OGUiXQAABiDzi_q3S2wMC7xIIH3N7ZM9g01aciWnNoiF-NWokX0_xw
+        user: __token__
+        password: pypi-AgEIcHlwaS5vcmcCJDYyYmRjYjBmLTI2YmQtNDU4OS1iYjYzLWFiYmEzMGE0MTgxOQACKlszLCJkN2Y4MzcxMi05MWVlLTRjNjktYjM5ZC1mMmM2MmRjOGE2OGUiXQAABiAzZDxDhxuzj9rY3qsFnwKIbOt9zIwfsCgQtsp38xn4ig
