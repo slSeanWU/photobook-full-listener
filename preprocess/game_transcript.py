@@ -2,6 +2,9 @@ from load_logs import load_logs
 from processor import Log
 
 
+def add_numbers(x, y): #function created as an example for pytest
+    return x + y
+
 def print_transcript(log):
     print("Game ID: {}".format(log.game_id))
     print("Domain ID: {}".format(log.domain_id))
